@@ -8,6 +8,8 @@ import { cartStore } from '$lib/carts.js';
 	import BuilderBlock from '$lib/components/BuilderBlock.svelte';
 	import QuestionSheetPreview from '$lib/components/QuestionSheetPreview.svelte';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
+	import { downloadDocx } from '$lib/exportDocx.js';
+	import { downloadPdf } from '$lib/exportPdf.js';
 
 	const draft = $derived($builderStore);
 	const order = $derived($docOrder);
@@ -17,6 +19,50 @@ import { cartStore } from '$lib/carts.js';
 	let cartId = $state('');
 	let importStatus = $state(null); // {added, skipped, cartName, dupes} | {error} | null
 	let confirmNew = $state(false);
+	let previewEl = $state(null);
+	let docxBusy = $state(false);
+	let pdfBusy = $state(false);
+	let docxMsg = $state(null); // {ok, text} | null
+
+	async function exportPdf() {
+		if (pdfBusy || !previewEl) return;
+		pdfBusy = true;
+		docxMsg = null;
+		try {
+			const base = draft.title?.trim() || 'paper';
+			const title = previewMode === 'answers' ? `${base} - answers` : base;
+			const { missing } = await downloadPdf(previewEl, title);
+			docxMsg = {
+				ok: missing === 0,
+				text: missing ? `PDF saved, but ${missing} figure${missing === 1 ? '' : 's'} could not be loaded.` : 'PDF saved.'
+			};
+		} catch (e) {
+			docxMsg = { ok: false, text: `PDF export failed: ${e.message}` };
+		} finally {
+			pdfBusy = false;
+			setTimeout(() => (docxMsg = null), 8000);
+		}
+	}
+
+	async function exportWord() {
+		if (docxBusy || !previewEl) return;
+		docxBusy = true;
+		docxMsg = null;
+		try {
+			const base = draft.title?.trim() || 'paper';
+			const title = previewMode === 'answers' ? `${base} - answers` : base;
+			const { missing } = await downloadDocx(previewEl, title);
+			docxMsg = {
+				ok: missing === 0,
+				text: missing ? `Word file saved, but ${missing} figure${missing === 1 ? '' : 's'} could not be loaded.` : 'Word file saved.'
+			};
+		} catch (e) {
+			docxMsg = { ok: false, text: `Word export failed: ${e.message}` };
+		} finally {
+			docxBusy = false;
+			setTimeout(() => (docxMsg = null), 8000);
+		}
+	}
 	let previewMode = $state('questions'); // questions | answers
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let undo = $state(null);
@@ -26,9 +72,9 @@ import { cartStore } from '$lib/carts.js';
 	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
 	let figBoxed = $state(browser ? localStorage.getItem('pl-figbox-v1') === '1' : false);
 	let sheetFont = $state(
-		browser && ['paperlab', 'times', 'arial', 'cambria', 'stix'].includes(localStorage.getItem('pl-sheetfont-v1'))
-			? localStorage.getItem('pl-sheetfont-v1')
-			: 'paperlab'
+		browser && ['paperlab', 'times', 'arial', 'cambria', 'stix'].includes(localStorage.getItem('pl-sheetfont-v2'))
+			? localStorage.getItem('pl-sheetfont-v2')
+			: 'times' // matches the printed papers; math letters follow it
 	);
 	let figScale = $state(
 		browser && Number(localStorage.getItem('pl-figscale-v1')) >= 40 && Number(localStorage.getItem('pl-figscale-v1')) <= 150
@@ -43,7 +89,7 @@ import { cartStore } from '$lib/carts.js';
 	$effect(() => {
 		try {
 			localStorage.setItem('pl-figbox-v1', figBoxed ? '1' : '0');
-			localStorage.setItem('pl-sheetfont-v1', sheetFont);
+			localStorage.setItem('pl-sheetfont-v2', sheetFont);
 			localStorage.setItem('pl-figscale-v1', String(figScale));
 		} catch { /* private mode: prefs last the session */ }
 	});
@@ -241,10 +287,15 @@ import { cartStore } from '$lib/carts.js';
 				<option value="stix">STIX Two Text</option>
 			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
-			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
+			<button type="button" class="pl-btn" disabled={docxBusy || empty} onclick={exportWord} title="Download the current sheet as a Word file (equations stay editable)">{docxBusy ? 'Exporting…' : 'Word (.docx)'}</button>
+			<button type="button" class="pl-btn pl-btn-primary" disabled={pdfBusy || empty} onclick={exportPdf} title="Download the current sheet as a PDF (A4, exactly as previewed)">{pdfBusy ? 'Saving…' : 'Save PDF'}</button>
+			<button type="button" class="pl-btn" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>
 	</header>
 
+	{#if docxMsg}
+		<div class={docxMsg.ok ? 'pl-sub' : 'pl-error'} role="status" style="padding: 6px 16px;">{docxMsg.text}</div>
+	{/if}
 	{#if $builderCorrupt}
 		<div class="pl-error corrupt" role="alert">
 			<strong>Saved builder draft was corrupt.</strong>
@@ -465,7 +516,7 @@ import { cartStore } from '$lib/carts.js';
 					<span class="pl-sub">Live A4 · print exact</span>
 				</span>
 			</div>
-			<div class="previewscroll">
+			<div class="previewscroll" bind:this={previewEl}>
 				{#if previewMode === 'questions'}
 					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} figScale={figScale} />
 				{:else}

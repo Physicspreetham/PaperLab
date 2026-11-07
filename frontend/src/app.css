@@ -322,3 +322,24 @@ table.pl-table {
 		transition: none !important;
 	}
 }
+
+/* Math variables upright, like the printed papers (KaTeX defaults to italic).
+   Latin letters use KaTeX_Main; lowercase Greek falls back to Times, which
+   has upright forms. "html" in front outranks katex.min.css regardless of
+   stylesheet order. */
+html .katex .mathnormal {
+	font-family: KaTeX_Main, 'Times New Roman', serif;
+	font-style: normal;
+}
+
+/* KaTeX scales every equation to 121% of the surrounding text; papers set
+   math at the same size as the sentence around it. */
+html .katex {
+	font-size: 1em;
+}
+
+/* KaTeX pads italic letters (T, J, f ...) with an "italic correction" margin;
+   upright letters don't need it and it shows as gaps in words like "Tesla". */
+html .katex .mathnormal[style*='margin-right'] {
+	margin-right: 0 !important;
+}

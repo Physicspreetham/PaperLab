@@ -28,11 +28,52 @@ const FIRST_OL_RE = /^(\s*)<ol([^>]*)>/;
 // margin — see the measured FITJEE/GTA/ADV rhythm. Tagged with pl-opt so
 // sheet CSS can indent them exactly like list-item stems.
 function markOptionParas(html) {
-	return String(html ?? '').replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) => {
+	const tagged = String(html ?? '').replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) => {
 		if (/class\s*=/.test(attrs)) return m;
 		const text = inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 		if (!/^[A-D]\)/.test(text)) return m;
 		return `<p${attrs} class="pl-opt">${inner}</p>`;
+	});
+	return groupOptionRows(tagged);
+}
+
+// Approximate visual width (in characters) of a TeX string: a fraction is as
+// wide as its wider half, commands count as one glyph. Mirrors the Word
+// export's rule (backend/pandoc_docx.lua) so every output lays options alike.
+function texWidth(t) {
+	let prev;
+	do {
+		prev = t;
+		t = t.replace(/\\[dt]?frac\s*(\{[^{}]*\})\s*(\{[^{}]*\})/g, (m, a, b) =>
+			'x'.repeat(Math.max(texWidth(a.slice(1, -1)), texWidth(b.slice(1, -1)))));
+	} while (t !== prev);
+	t = t.replace(/\\(left|right)/g, '').replace(/\\[,;:! ]/g, '').replace(/\\[a-zA-Z]+/g, 'x').replace(/[{}^_]/g, '');
+	return [...t].length;
+}
+
+function optionWidth(inner) {
+	let s = inner.replace(/<span[^>]*\bdata-tex="([^"]*)"[^>]*>\s*<\/span>/g, (m, e) => {
+		let t;
+		try { t = decodeURIComponent(e); } catch { t = e; }
+		return 'x'.repeat(texWidth(t) + 1);
+	});
+	s = s.replace(/<[^>]*>/g, '').replace(/&[a-zA-Z#0-9]+;/g, ' ').replace(/\s+/g, ' ').trim();
+	s = s.replace(/^[A-D]\)\s*/, '');
+	return [...s].length;
+}
+
+const OPT_ROW_MAX = 14; // characters that fit one of four option columns
+const OPT_PARA_RE = /<p[^>]*\bclass="pl-opt"[^>]*>([\s\S]*?)<\/p>/g;
+
+// Short options print as ONE row of four columns, like the source papers
+// (A) 2   B) 4   C) 9   D) 12); long options stay one per line.
+export function groupOptionRows(html) {
+	const runRe = new RegExp(`(?:${OPT_PARA_RE.source}\\s*){2,4}`, 'g');
+	return html.replace(runRe, (run) => {
+		const paras = [...run.matchAll(OPT_PARA_RE)];
+		if (paras.length < 2) return run;
+		if (paras.some((m) => optionWidth(m[1]) > OPT_ROW_MAX)) return run;
+		return `<div class="pl-optrow">${paras.map((m) => m[0]).join('')}</div>\n`;
 	});
 }
 // Passage headers arrive standalone (<p>Paragraph for Q Nos. 33 to 34:</p>,

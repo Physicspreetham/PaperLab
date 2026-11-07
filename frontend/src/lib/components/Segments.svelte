@@ -196,7 +196,10 @@
 			const tex = decodeURIComponent(node.dataset.tex || '');
 			let html = '';
 			try {
-				html = katex.renderToString(tex, {
+				// A fraction in running text is drawn at ~70% size (TeX text style);
+				// papers set fractions at full text size, so use the display-style
+				// fraction command. Small fractions are hard to read, esp. printed.
+				html = katex.renderToString(tex.replace(/\\frac(?![a-zA-Z])/g, '\\dfrac'), {
 					displayMode: node.classList.contains('pl-math-block'),
 					throwOnError: false
 				});

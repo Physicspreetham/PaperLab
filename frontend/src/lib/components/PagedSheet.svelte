@@ -225,6 +225,12 @@
 	.apage.font-times {
 		font-family: 'Times New Roman', Times, Georgia, serif;
 	}
+	/* Math letters/Greek in Times too, so they match the sentence around them
+	   (KaTeX_Main stays as the fallback for symbols Times lacks). */
+	.apage.font-times :global(.katex),
+	.apage.font-times :global(.katex .mathnormal) {
+		font-family: 'Times New Roman', Times, KaTeX_Main, serif;
+	}
 	.apage.font-arial {
 		font-family: Arial, Helvetica, sans-serif;
 	}
@@ -265,6 +271,17 @@
 	.apage :global(ul) {
 		margin: 0.5em 0;
 		padding-left: 2.75em;
+	}
+	/* Short options share one row of four columns (A) B) C) D)). */
+	.apage :global(.pl-optrow) {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		column-gap: 12px;
+		margin-left: 2.75em;
+	}
+	/* Same margins on all four, or A) (a first-child) rides higher than B-D. */
+	.apage :global(.pl-optrow p.pl-opt) {
+		margin: 0.5em 0 !important;
 	}
 	.apage :global(p.pl-opt) {
 		margin-left: 2.75em;
