@@ -14,7 +14,7 @@
 	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
 	const isLab = $derived($page.url.pathname.startsWith('/lab'));
 	// Full-bleed workspace routes fill the shell instead of the narrow column.
-	const isWide = $derived($page.url.pathname === '/builder');
+	const isWide = $derived($page.url.pathname === '/builder' || $page.url.pathname === '/model/paper');
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;

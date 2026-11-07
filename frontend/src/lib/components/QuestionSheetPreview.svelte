@@ -19,7 +19,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true, font = 'paperlab', figScale = 80 } = $props();
+	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true, font = 'paperlab', figScale = 80, pattern = null } = $props();
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -250,22 +250,46 @@
 {#snippet qrow(def)}
 	{#if def.kind === 'doc'}
 		<header class="dochead">
+			{#if pattern}<p class="brandline">PAPERLAB · MODEL PAPER</p>{/if}
 			<h2>{title?.trim() || 'Untitled paper'}</h2>
-			<p class="pl-sub">{mode === 'paper' ? 'Question paper' : 'Assignment'} · {numbering.total} questions</p>
+			{#if pattern}
+				<p class="pl-sub">Time: {pattern.minutes} minutes · Max. Marks: {pattern.total}</p>
+			{:else}
+				<p class="pl-sub">{mode === 'paper' ? 'Question paper' : 'Assignment'} · {numbering.total} questions</p>
+			{/if}
 		</header>
-	{:else if def.kind === 'sec'}
-		{@const s = sections[def.si]}
-		{@const secNums = (s.blockIds ?? []).flatMap((bid) => numbering.byBlock[bid] ?? [])}
-		{@const meta = sectionMeta(s.atype, secNums.length, (s.blockIds ?? []).length)}
-		<div class="sechead">
-			<h3>SECTION–{(LETTERS[def.si] ?? `X${def.si + 1}`)}</h3>
-			<p class="seckind">({meta.kind})</p>
-			<ul>
-				{#each meta.lines as line (line)}
+		{#if pattern}
+			<ul class="gen">
+				{#each pattern.general as line (line)}
 					<li>{line}</li>
 				{/each}
 			</ul>
-		</div>
+		{/if}
+	{:else if def.kind === 'sec'}
+		{@const s = sections[def.si]}
+		{@const ps = pattern?.sections?.find((x) => x.id === s.id)}
+		{#if ps}
+			<div class="sechead">
+				<h3>{ps.heading}</h3>
+				<ul>
+					{#each ps.instructions as line (line)}
+						<li>{line}</li>
+					{/each}
+				</ul>
+			</div>
+		{:else}
+			{@const secNums = (s.blockIds ?? []).flatMap((bid) => numbering.byBlock[bid] ?? [])}
+			{@const meta = sectionMeta(s.atype, secNums.length, (s.blockIds ?? []).length)}
+			<div class="sechead">
+				<h3>SECTION–{(LETTERS[def.si] ?? `X${def.si + 1}`)}</h3>
+				<p class="seckind">({meta.kind})</p>
+				<ul>
+					{#each meta.lines as line (line)}
+						<li>{line}</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 	{:else if def.kind === 'parahead'}
 		<p class="parahead">Paragraph {def.label}</p>
 	{:else if def.kind === 'loading'}
@@ -294,6 +318,19 @@
 		font-size: 1.3rem;
 		margin: 0 0 2px;
 		color: #111;
+	}
+	.brandline {
+		margin: 0 0 4px;
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		color: #5c6066;
+	}
+	.gen {
+		margin: 0 0 12px;
+		padding-left: 18px;
+		font-size: 0.78rem;
+		line-height: 1.55;
 	}
 	.dochead .pl-sub {
 		margin: 0;

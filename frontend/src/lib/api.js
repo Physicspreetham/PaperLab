@@ -178,4 +178,12 @@ export const api = {
 		if (cursor) q.set('cursor', cursor);
 		return request(`/search?${q.toString()}`);
 	},
+
+	// Model paper builder (exam patterns + random picking)
+	modelPatterns: () => request('/model/patterns'),
+	modelDescribe: (pattern) => request('/model/describe', { method: 'POST', body: JSON.stringify({ pattern }) }),
+	modelPreview: (body) => request('/model/preview', { method: 'POST', body: JSON.stringify(body) }),
+	modelGenerate: (body) => request('/model/generate', { method: 'POST', body: JSON.stringify(body) }),
+	modelRelease: (items) => request('/model/release', { method: 'POST', body: JSON.stringify({ items }) }),
+	modelForgetUsed: () => request('/model/used', { method: 'DELETE' })
 };

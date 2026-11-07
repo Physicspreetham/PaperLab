@@ -26,6 +26,7 @@
 		{ href: '/search', label: 'Search Questions', icon: 'search' },
 		{ href: '/cart', label: 'Cart', icon: 'cart' },
 		{ href: '/builder', label: 'Paper Builder', icon: 'builder' },
+		{ href: '/model', label: 'Model Paper', icon: 'model' },
 		{ href: '/inbox', label: 'Tagging Inbox', badge: props.inboxCount, admin: true, icon: 'tag' },
 		{ href: '/syllabus', label: 'Syllabus Map', admin: true, icon: 'map' },
 		{ href: '/intake', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
@@ -41,6 +42,7 @@
 		upload:
 			'<path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>',
 		ledger: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h8M8 18h5"/>',
+		model: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
 		builder: '<rect x="4" y="3" width="12" height="16" rx="2"/><path d="M8 7h5M8 11h5M8 15h3"/><path d="M16 17h4a1 1 0 0 0 1-1v-3"/>'
 	};
 </script>
@@ -157,7 +159,7 @@
 		place-items: center;
 		background: var(--pl-seal);
 		color: #fff;
-		font-family: var(--pl-font-display);
+		font-family: var(--pl-font-heading);
 		font-size: 1.3rem;
 	}
 	.brand-text {
@@ -166,7 +168,7 @@
 		line-height: 1.2;
 	}
 	.brand-name {
-		font-family: var(--pl-font-display);
+		font-family: var(--pl-font-heading);
 		font-size: 1.25rem;
 		letter-spacing: 0.02em;
 	}
