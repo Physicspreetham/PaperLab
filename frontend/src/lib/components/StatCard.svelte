@@ -21,7 +21,7 @@
 		margin-bottom: 4px;
 	}
 	.stat-value {
-		font-family: var(--pl-font-display);
+		font-family: var(--pl-font-heading);
 		font-size: 2rem;
 		line-height: 1.1;
 	}

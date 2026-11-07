@@ -1,3 +1,5 @@
+@import '@fontsource-variable/inter/wght.css';
+
 /* PaperLab design tokens: Archive Reading Room, modern sleek shell.
    Palette from DESIGN.md; radii follow the reference layout (soft cards,
    pill controls) rather than the sharp archival spec. */
@@ -130,7 +132,12 @@
 	--pl-shadow-sm: 0 1px 2px rgb(28 30 33 / 0.06), 0 4px 16px rgb(28 30 33 / 0.06);
 	--pl-shadow-md: 0 8px 32px rgb(28 30 33 / 0.14);
 	--pl-font-display: 'Source Serif 4', Georgia, serif;
-	--pl-font-ui: Inter, system-ui, -apple-system, sans-serif;
+	/* Apple-style UI stack: real SF Pro on Apple devices (Apple's own fonts
+	   can't be bundled), bundled Inter everywhere else -- the closest match. */
+	--pl-font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter Variable', Inter,
+		'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+	--pl-font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter Variable', Inter,
+		'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
 	--pl-font-mono: ui-monospace, sfmono-regular, menlo, monospace;
 }
 
@@ -175,14 +182,20 @@ body {
 	font-family: var(--pl-font-ui);
 	font-size: 0.95rem;
 	line-height: 1.55;
+	letter-spacing: -0.011em;
+	font-optical-sizing: auto;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
 h3 {
-	font-family: var(--pl-font-display);
+	font-family: var(--pl-font-heading);
 	font-weight: 600;
 	line-height: 1.2;
+	letter-spacing: -0.022em;
 	margin: 0;
 }
 
