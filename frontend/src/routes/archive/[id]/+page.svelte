@@ -5,11 +5,13 @@
 	const id = $derived($page.params.id);
 	const fromSearch = $derived($page.url.searchParams.get('from') === 'search');
 	const initialQ = $derived($page.url.searchParams.get('q'));
+	const initialAction = $derived($page.url.searchParams.get('action') ?? '');
 </script>
 
 <QuestionReader
 	paperId={id}
 	initialQ={initialQ}
+	{initialAction}
 	backHref={fromSearch ? '/search' : '/archive'}
 	backLabel={fromSearch ? 'Back to Search Results' : 'Back to Archive'}
 />

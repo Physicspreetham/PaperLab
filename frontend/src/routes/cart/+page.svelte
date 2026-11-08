@@ -1,6 +1,6 @@
 <script>
 	import { cartStore, activeCart, carts, cartCorrupt } from '$lib/carts.js';
-	import CartCard from '$lib/components/CartCard.svelte';
+	import QuestionBrowser from '$lib/components/QuestionBrowser.svelte';
 
 	let newName = $state('');
 	let renameValue = $state('');
@@ -41,13 +41,13 @@
 
 <svelte:head><title>Cart - PaperLab</title></svelte:head>
 
+{#key cart?.id}
+<QuestionBrowser items={cart?.items ?? []} mode="cart" onRemove={(item) => carts.remove(item.paperId, item.number)}>
+{#snippet tools()}
 <h1>Question cart</h1>
-<p class="pl-sub">
-	Pick questions from Search or the reader. Carts live only in this browser —
-	no server changes, no uploads. A cart tracks which questions are in, not
-	their order — paragraph groups stay together as one block.
-</p>
-
+<p class="pl-sub">{cart?.name ?? ''} · {cart?.items.length ?? 0} questions</p>
+{#if !cart?.items.length}<p class="pl-sub"><a href="/search">Search questions</a> to add to this cart.</p>{/if}
+<details class="management"><summary>Manage carts</summary><div class="management-panel">
 {#if $cartCorrupt}
 	<div class="pl-error" role="alert">
 		<strong>Saved cart data was corrupt.</strong>
@@ -154,26 +154,14 @@
 	{/if}
 </div>
 
-{#if cart}
-	{#if cart.items.length === 0}
-		<div class="pl-card empty">
-			<p>This cart is empty. <a href="/search">Search questions</a> and press the cart icon on any card, or open a question and use the cart button beside its title.</p>
-		</div>
-	{:else}
-		<div class="grid">
-			{#each cart.items as item (`${item.paperId}/${item.number}`)}
-				<CartCard
-					{item}
-					onRemove={() => carts.remove(item.paperId, item.number)}
-				/>
-			{/each}
-		</div>
-	{/if}
-{/if}
+</div></details>
+{/snippet}
+</QuestionBrowser>
+{/key}
 
 <style>
 	h1 {
-		font-size: 2rem;
+		font-size: 1.1rem;
 		margin-bottom: 4px;
 	}
 	/* 1 — compact toolbar: one row, conditional sub-row only */
@@ -267,26 +255,8 @@
 		padding: 4px 10px;
 		font-size: 0.85rem;
 	}
-	/* 4 — responsive grid: 3 / 2 / 1 */
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px;
-	}
-	@media (max-width: 1100px) {
-		.grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-	}
-	@media (max-width: 700px) {
-		.grid {
-			grid-template-columns: 1fr;
-		}
-		.tactions {
-			margin-left: 0;
-		}
-	}
-	.empty a {
-		font-weight: 600;
-	}
+	.management { position: relative; }
+	.management summary { cursor: pointer; font-size: 0.85rem; }
+	.management-panel { position: absolute; left: 0; top: 100%; width: min(450px, 85vw); box-sizing: border-box; padding: 8px; background: var(--pl-surface); border: 1px solid var(--pl-line); box-shadow: var(--pl-shadow-md); z-index: 10; }
+	.pl-sub { font-size: 0.8rem; }
 </style>

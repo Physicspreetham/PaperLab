@@ -18,6 +18,7 @@
 		confirm: { tone: 'warn', text: 'Structure verified from the official paper. Marks and negative marking are from published analyses: please confirm against the official paper. Every number can be corrected after the paper is created.' }
 	};
 
+	let mode = $state(null);
 	let patterns = $state([]);
 	let topics = $state([]);
 	let facets = $state(null);
@@ -89,7 +90,7 @@
 
 	$effect(() => {
 		void optKey;
-		if (!pattern) return;
+		if (!pattern || mode !== 'auto') return;
 		const snapshot = { pattern, options };
 		let live = true;
 		const t = setTimeout(() => {
@@ -128,7 +129,7 @@
 	const shortSecs = $derived(pattern ? pattern.sections.filter((s) => avail[s.id] !== undefined && avail[s.id] < s.units) : []);
 
 	async function create(mode) {
-		if (!pattern || busy) return;
+		if (!pattern || !mode || busy) return;
 		busy = true;
 		msg = null;
 		try {
@@ -197,6 +198,18 @@
 		{/if}
 	</header>
 
+	<div class="mode-picker" role="group" aria-label="How to create your model paper">
+		{#each [{ key: 'auto', label: 'Generate automatically' }, { key: 'manual', label: 'Build manually' }] as choice (choice.key)}
+			<button type="button" class="pl-btn" class:chosen={mode === choice.key}
+				aria-expanded={mode === choice.key} aria-controls="model-setup" disabled={busy}
+				onclick={() => { mode = mode === choice.key ? null : choice.key; msg = null; }}>
+				{choice.label} <span aria-hidden="true">{mode === choice.key ? '−' : '+'}</span>
+			</button>
+		{/each}
+	</div>
+
+	<div id="model-setup" class="setup">
+	{#if mode}
 	{#if loadError}
 		<p class="pl-error" role="alert">Could not load: {loadError}</p>
 	{:else if !pattern}
@@ -250,6 +263,7 @@
 			</div>
 		</section>
 
+		{#if mode === 'auto'}
 		<section class="card">
 			<h2>2 · What to draw from</h2>
 			<div class="scope">
@@ -359,8 +373,10 @@
 			{/if}
 		</section>
 
+		{/if}
+
 		<section class="card">
-			<h2>4 · Create</h2>
+			<h2>{mode === 'auto' ? '4' : '2'} · Create</h2>
 			<div class="row">
 				<span class="label">Title</span>
 				<input class="text" bind:value={title} placeholder={`${pattern.label} (Physics) — model paper`} aria-label="Title" />
@@ -371,16 +387,38 @@
 				<span class="pl-sub">The full official paper is 3 hours for Physics, Chemistry and Mathematics; Physics alone is about 60 minutes.</span>
 			</div>
 			<div class="go">
-				<button type="button" class="pl-btn pl-btn-primary" disabled={busy} onclick={() => create('auto')}>{busy ? 'Working…' : 'Generate automatically'}</button>
-				<button type="button" class="pl-btn" disabled={busy} onclick={() => create('manual')}>Build manually</button>
-				<span class="pl-sub">Auto picks random questions section by section, spread over chapters. You can swap any question afterwards.</span>
+				<button type="button" class="pl-btn pl-btn-primary" disabled={busy} onclick={() => create(mode)}>{busy ? 'Working…' : mode === 'auto' ? 'Generate paper' : 'Create manual paper'}</button>
+				<span class="pl-sub">{mode === 'auto' ? 'Auto picks random questions section by section, spread over chapters. You can swap any question afterwards.' : 'Create an empty paper, then choose questions for each section by hand.'}</span>
 			</div>
 			{#if msg}<p class={msg.ok ? 'pl-sub' : 'pl-error'} role="status">{msg.text}</p>{/if}
 		</section>
 	{/if}
+	{/if}
+	</div>
 </div>
 
 <style>
+	.mode-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+	.mode-picker button {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 24px;
+	}
+	.mode-picker button.chosen {
+		background: var(--pl-seal);
+		border-color: var(--pl-seal);
+		color: #fff;
+	}
+	.setup {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
 	.mp {
 		max-width: 980px;
 		display: flex;

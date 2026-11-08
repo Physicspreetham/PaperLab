@@ -14,7 +14,8 @@
 	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
 	const isLab = $derived($page.url.pathname.startsWith('/lab'));
 	// Full-bleed workspace routes fill the shell instead of the narrow column.
-	const isWide = $derived($page.url.pathname === '/builder' || $page.url.pathname === '/model/paper');
+	const isReader = $derived(['/search', '/cart'].includes($page.url.pathname));
+	const isWide = $derived(isReader || $page.url.pathname === '/builder' || $page.url.pathname === '/model/paper');
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;
@@ -51,17 +52,17 @@
 	});
 </script>
 
-{#if isLab}
-	<div class="labshell">
+{#if isLab || isReader}
+	<div class="labshell" class:reader={isReader}>
 		{@render children()}
 		<LoginDialog />
 	</div>
 {:else}
-	<div class="shell" class:wide={isWide}>
+	<div class="shell" class:wide={isWide} class:reader={isReader}>
 		<Sidebar {counts} {inboxCount} />
 		<div class="main">
 			<Topbar crumbs={['Physics']} />
-			<main class="content" class:wide={isWide}>
+			<main class="content" class:wide={isWide} class:reader={isReader}>
 				{@render children()}
 			</main>
 		</div>
@@ -115,6 +116,7 @@
 			overflow: visible;
 		}
 	}
+	.labshell.reader { height: 100dvh; min-height: 0; overflow: hidden; }
 	@media print {
 		.shell.wide {
 			height: auto;

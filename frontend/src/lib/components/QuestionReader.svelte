@@ -15,7 +15,7 @@
 	import AddToCart from '$lib/components/AddToCart.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
 
-	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive' } = $props();
+	let { paperId, initialQ = null, initialAction = '', backHref = '/archive', backLabel = 'Back to Archive' } = $props();
 
 	const isArchivist = $derived($role === 'archivist');
 
@@ -111,6 +111,10 @@
 	onMount(async () => {
 		try {
 			await refresh();
+			showSolution = initialAction === 'solution';
+			showQImage = initialAction === 'image';
+			editing = initialAction === 'classify';
+			showFigures = initialAction === 'figures';
 		} catch (e) {
 			error = e.message;
 		} finally {
