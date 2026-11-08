@@ -211,7 +211,7 @@ def _descendants(codes):
         tmap = {r["code"]: r["parent"] for r in conn.execute(
             "SELECT code, parent FROM topics").fetchall()}
         qrows = conn.execute(
-            "SELECT question_id, topic_code FROM question_topics").fetchall()
+            "SELECT question_id, topic_code FROM question_topics WHERE rank = 0").fetchall()
     finally:
         conn.close()
     want = set()
@@ -260,7 +260,7 @@ def test_subtree_counts_are_distinct_questions(search_client):
     assert sub["PH01"] == 3
     assert sub["PH01-W1"] == 3
     assert sub["PH01.01"] == 2
-    assert sub["PH01.02"] == 2
+    assert sub["PH01.02"] == 1  # supporting tag on p1q1 is excluded
     assert sub["PH13.14"] == 1
     assert sub["M2"] == 1
 
@@ -270,6 +270,23 @@ def test_overlapping_selection_dedupes(search_client):
     m1 = _get(client, "/api/search?topic=M1&limit=100")
     both = _get(client, "/api/search?topic=M1&topic=PH01&limit=100")
     assert both["total"] == m1["total"] == 3
+
+
+def test_primary_only_and_optional_supporting_search(search_client):
+    client, ids = search_client
+    qid = database.get_question_id(ids["p1"], "1")
+    database.set_question_topics(qid, ["PH29.02", "PH01.03"], src="human")
+    from backend.routers.search import bump_search_version
+    bump_search_version()
+    optics = _get(client, "/api/search?topic=PH29")
+    assert any(i["paperId"] == ids["p1"] and i["number"] == "1" for i in optics["items"])
+    vectors = _get(client, "/api/search?topic=PH01")
+    assert not any(i["paperId"] == ids["p1"] and i["number"] == "1" for i in vectors["items"])
+    supporting = _get(client, "/api/search?topic=PH01&include_supporting=true")
+    assert any(i["paperId"] == ids["p1"] and i["number"] == "1" for i in supporting["items"])
+    facets = _get(client, "/api/search/facets")
+    assert facets["topicSubtreeCounts"]["PH29"] == 1
+    assert "PH01.03" not in facets["topicCounts"]
 
 
 def test_chapters_deterministic_first_plus_overflow(search_client):
@@ -298,7 +315,7 @@ def test_card_preview_thumb_light(search_client):
     assert nofig["preview"] != ""
     assert set(first) == {"paperId", "number", "qtype", "difficulty", "paper",
                           "chapters", "chapterOverflow", "topics", "preview",
-                          "thumb"}
+                          "thumb", "primaryTopic"}
 
 
 # ---------------------------------------------------------------- perf guard

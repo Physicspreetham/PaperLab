@@ -140,7 +140,8 @@
 	<FilterDropdown label="Source" options={facetOpts.institute} bind:selected={filters.institute} />
 	<FilterDropdown label="Exam" options={facetOpts.exam} bind:selected={filters.exam} />
 	<FilterDropdown label="Year" options={facetOpts.year} bind:selected={filters.year} />
-	<TopicTreePicker nodes={topics} counts={topicCounts} bind:selected={filters.topic} />
+	<TopicTreePicker nodes={topics} counts={filters.include_supporting ? {} : topicCounts} bind:selected={filters.topic} />
+	<label><input type="checkbox" bind:checked={filters.include_supporting} /> Include supporting concepts</label>
 	{#if activeCount > 0}
 		<button type="button" class="clear-all" onclick={clearAll}>
 			Clear all · {activeCount}

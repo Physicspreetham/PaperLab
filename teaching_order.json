@@ -1,0 +1,2395 @@
+{
+  "version": "nucleus-2026-28-rev-22-june-v1",
+  "source": "Rev_Jr_Super_60_Nucleus_Teaching_&_Test_Schedule_2026_28_@_22nd.pdf",
+  "policy": "Rank is completion of first teaching slot, never revision/test dates. Shared slots tie and require review. Unverified or combined scope requires review.",
+  "topics": {
+    "PH01.01": {
+      "name": "Scalars & vectors: types of vectors, representation, unit vectors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260420,
+      "taught_from": "2026-04-20",
+      "taught_until": "2026-04-20",
+      "source_page": 2
+    },
+    "PH01.02": {
+      "name": "Addition & subtraction: triangle, parallelogram & polygon laws, resultant",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260421,
+      "taught_from": "2026-04-21",
+      "taught_until": "2026-04-21",
+      "source_page": 2
+    },
+    "PH01.03": {
+      "name": "Resolution of vectors: rectangular components in 2D & 3D, direction cosines",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260422,
+      "taught_from": "2026-04-22",
+      "taught_until": "2026-04-22",
+      "source_page": 2
+    },
+    "PH01.04": {
+      "name": "Scalar (dot) product: angle between vectors, projection",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260424,
+      "taught_from": "2026-04-23",
+      "taught_until": "2026-04-24",
+      "source_page": 2
+    },
+    "PH01.05": {
+      "name": "Vector (cross) product: area of triangle & parallelogram, right-hand rule",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260424,
+      "taught_from": "2026-04-23",
+      "taught_until": "2026-04-24",
+      "source_page": 2
+    },
+    "PH01.06": {
+      "name": "Scalar & vector triple products, coplanarity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260424,
+      "taught_from": "2026-04-23",
+      "taught_until": "2026-04-24",
+      "source_page": 2
+    },
+    "PH01.07": {
+      "name": "Basic calculus for physics: differentiation, integration, maxima & minima, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260418,
+      "taught_from": "2026-04-11",
+      "taught_until": "2026-04-18",
+      "source_page": 2
+    },
+    "PH02.01": {
+      "name": "Distance & displacement, average speed & velocity, motion with constant velocity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260427,
+      "taught_from": "2026-04-27",
+      "taught_until": "2026-04-27",
+      "source_page": 2
+    },
+    "PH02.02": {
+      "name": "1D motion with constant acceleration, sequential accelerating & decelerating motion, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260429,
+      "taught_from": "2026-04-28",
+      "taught_until": "2026-04-29",
+      "source_page": 2
+    },
+    "PH02.03": {
+      "name": "Vertical motion: freely falling & vertically projected bodies, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260430,
+      "taught_from": "2026-04-30",
+      "taught_until": "2026-04-30",
+      "source_page": 3
+    },
+    "PH02.04": {
+      "name": "Variable acceleration: 1D motion with variable acceleration, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260501,
+      "taught_from": "2026-05-01",
+      "taught_until": "2026-05-01",
+      "source_page": 3
+    },
+    "PH02.05": {
+      "name": "Relative motion (1D): chasing, overtaking conditions, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260515,
+      "taught_from": "2026-05-15",
+      "taught_until": "2026-05-15",
+      "source_page": 4
+    },
+    "PH03.01": {
+      "name": "Motion in a plane: 2D acceleration & trajectory equations",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH03.02": {
+      "name": "Projectile motion: oblique projectile from ground, from a height, from a moving frame; 3D projectiles",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH03.03": {
+      "name": "Projectile motion on an inclined plane",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260514,
+      "taught_from": "2026-05-13",
+      "taught_until": "2026-05-14",
+      "source_page": 3
+    },
+    "PH03.04": {
+      "name": "Relative motion (2D): closest approach, collision conditions, aiming & changing, graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260522,
+      "taught_from": "2026-05-21",
+      "taught_until": "2026-05-22",
+      "source_page": 4
+    },
+    "PH03.05": {
+      "name": "Relative velocity applications: river-boat, wind-aeroplane, rain-man problems",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260520,
+      "taught_from": "2026-05-20",
+      "taught_until": "2026-05-20",
+      "source_page": 4
+    },
+    "PH04.01": {
+      "name": "Newton's laws: F_inst, F_avg, F_thrust, impulse, F-t graph",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260526,
+      "taught_from": "2026-05-25",
+      "taught_until": "2026-05-26",
+      "source_page": 5
+    },
+    "PH04.02": {
+      "name": "Motion under constant & variable forces",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH04.03": {
+      "name": "Contact & non-contact forces: free body diagrams, equilibrium of bodies",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260528,
+      "taught_from": "2026-05-28",
+      "taught_until": "2026-05-28",
+      "source_page": 5
+    },
+    "PH04.04": {
+      "name": "Constraints (rope, wedge, geometrical): relations among v and a",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260602,
+      "taught_from": "2026-06-02",
+      "taught_until": "2026-06-02",
+      "source_page": 5
+    },
+    "PH04.05": {
+      "name": "Dynamics of systems: connected bodies, contact bodies, connected & contact bodies",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260602,
+      "taught_from": "2026-06-02",
+      "taught_until": "2026-06-02",
+      "source_page": 5
+    },
+    "PH04.06": {
+      "name": "Inertial & non-inertial frames: pseudo force",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260529,
+      "taught_from": "2026-05-29",
+      "taught_until": "2026-05-29",
+      "source_page": 5
+    },
+    "PH04.07": {
+      "name": "Springs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260603,
+      "taught_from": "2026-06-03",
+      "taught_until": "2026-06-03",
+      "source_page": 5
+    },
+    "PH05.01": {
+      "name": "Static, limiting & kinetic friction, angle of friction, net contact force",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260609,
+      "taught_from": "2026-06-09",
+      "taught_until": "2026-06-09",
+      "source_page": 5
+    },
+    "PH05.02": {
+      "name": "Motion on a rough horizontal surface: pulling, pushing, projecting",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260611,
+      "taught_from": "2026-06-11",
+      "taught_until": "2026-06-11",
+      "source_page": 6
+    },
+    "PH05.03": {
+      "name": "Motion on a rough inclined plane",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260610,
+      "taught_from": "2026-06-10",
+      "taught_until": "2026-06-10",
+      "source_page": 6
+    },
+    "PH05.04": {
+      "name": "Relative motion between rough contacts: block on block(s), truck, belt, rough incline",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260612,
+      "taught_from": "2026-06-12",
+      "taught_until": "2026-06-12",
+      "source_page": 6
+    },
+    "PH05.05": {
+      "name": "Block(s) against a rough vertical surface",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH05.06": {
+      "name": "Equilibrium of connected & contact bodies",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH05.07": {
+      "name": "Constrained motion involving friction",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH06.01": {
+      "name": "Kinematics of uniform circular motion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260615,
+      "taught_from": "2026-06-15",
+      "taught_until": "2026-06-15",
+      "source_page": 6
+    },
+    "PH06.02": {
+      "name": "Dynamics of uniform circular motion: centripetal force from T, N, f, spring, electric, gravitational & magnetic forces",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260618,
+      "taught_from": "2026-06-16",
+      "taught_until": "2026-06-18",
+      "source_page": 6
+    },
+    "PH06.03": {
+      "name": "Kinematics of non-uniform circular motion",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH06.04": {
+      "name": "Dynamics of non-uniform circular motion",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH06.05": {
+      "name": "Rotating frame of reference: centrifugal & Coriolis force",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260619,
+      "taught_from": "2026-06-19",
+      "taught_until": "2026-06-19",
+      "source_page": 6
+    },
+    "PH07.01": {
+      "name": "Work done by constant forces: contact (T, N, f, spring) & non-contact (electric, gravity, magnetic)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260623,
+      "taught_from": "2026-06-23",
+      "taught_until": "2026-06-23",
+      "source_page": 6
+    },
+    "PH07.02": {
+      "name": "Work done by variable forces, F-s graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260623,
+      "taught_from": "2026-06-23",
+      "taught_until": "2026-06-23",
+      "source_page": 6
+    },
+    "PH07.03": {
+      "name": "Conservative & non-conservative forces, PE, KE & ME",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260629,
+      "taught_from": "2026-06-29",
+      "taught_until": "2026-06-29",
+      "source_page": 7
+    },
+    "PH07.04": {
+      "name": "Work-energy theorem & law of conservation of energy: applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260630,
+      "taught_from": "2026-06-30",
+      "taught_until": "2026-06-30",
+      "source_page": 7
+    },
+    "PH07.05": {
+      "name": "Types of equilibrium: stable, unstable, neutral & conditions",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260701,
+      "taught_from": "2026-07-01",
+      "taught_until": "2026-07-01",
+      "source_page": 7
+    },
+    "PH07.06": {
+      "name": "Power, related graphs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260701,
+      "taught_from": "2026-07-01",
+      "taught_until": "2026-07-01",
+      "source_page": 7
+    },
+    "PH07.07": {
+      "name": "Vertical circular motion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260703,
+      "taught_from": "2026-07-02",
+      "taught_until": "2026-07-03",
+      "source_page": 7
+    },
+    "PH08.01": {
+      "name": "Centre of mass of a system of discrete particles",
+      "mapping_status": "verified",
+      "reason": "Explicit COM lesson on schedule page 7.",
+      "taught_from": "2026-07-07",
+      "taught_until": "2026-07-07",
+      "teaching_rank": 20260707,
+      "source_page": 7
+    },
+    "PH08.02": {
+      "name": "Centre of mass of continuous bodies: rod, arc, lamina, semicircular ring & disc, hemisphere, cone",
+      "mapping_status": "verified",
+      "reason": "Explicit COM lesson on schedule page 7.",
+      "taught_from": "2026-07-07",
+      "taught_until": "2026-07-07",
+      "teaching_rank": 20260707,
+      "source_page": 7
+    },
+    "PH08.03": {
+      "name": "Centre of mass of composite bodies & bodies with cavities",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH08.04": {
+      "name": "Motion of COM: velocity & acceleration of COM, Newton's second law for a system",
+      "mapping_status": "verified",
+      "reason": "Explicit COM lesson on schedule page 7.",
+      "taught_from": "2026-07-09",
+      "taught_until": "2026-07-09",
+      "teaching_rank": 20260709,
+      "source_page": 7
+    },
+    "PH08.05": {
+      "name": "Shift of COM, effect of internal forces on motion of COM",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH09.01": {
+      "name": "Linear momentum, impulse & impulse-momentum theorem",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260714,
+      "taught_from": "2026-07-14",
+      "taught_until": "2026-07-14",
+      "source_page": 8
+    },
+    "PH09.02": {
+      "name": "Conservation of linear momentum: explosions, recoil, man on plank or boat",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260714,
+      "taught_from": "2026-07-14",
+      "taught_until": "2026-07-14",
+      "source_page": 8
+    },
+    "PH09.03": {
+      "name": "Interacting systems: spring-block & wedge-block systems, COM frame",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH09.04": {
+      "name": "Variable mass systems: rocket propulsion, falling chain, conveyor belt",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260724,
+      "taught_from": "2026-07-24",
+      "taught_until": "2026-07-24",
+      "source_page": 8
+    },
+    "PH10.01": {
+      "name": "Types of collisions: elastic, inelastic, perfectly inelastic, coefficient of restitution",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260715,
+      "taught_from": "2026-07-15",
+      "taught_until": "2026-07-15",
+      "source_page": 8
+    },
+    "PH10.02": {
+      "name": "Head-on (1D) collisions: final velocities, loss of kinetic energy",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260717,
+      "taught_from": "2026-07-16",
+      "taught_until": "2026-07-17",
+      "source_page": 8
+    },
+    "PH10.03": {
+      "name": "Oblique (2D) collisions: collision of spheres, collision with a wall or surface",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260722,
+      "taught_from": "2026-07-20",
+      "taught_until": "2026-07-22",
+      "source_page": 8
+    },
+    "PH10.04": {
+      "name": "Multiple & successive collisions, bouncing ball",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH10.05": {
+      "name": "Collisions involving springs & strings, collisions in the COM frame",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260723,
+      "taught_from": "2026-07-23",
+      "taught_until": "2026-07-23",
+      "source_page": 8
+    },
+    "PH11.01": {
+      "name": "Rigid body properties & constraint, measuring Ï‰ and Î±",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260803,
+      "taught_from": "2026-08-03",
+      "taught_until": "2026-08-03",
+      "source_page": 8
+    },
+    "PH11.02": {
+      "name": "Kinematics of rigid body (Î± = 0, Î± = const, Î± variable)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260803,
+      "taught_from": "2026-08-03",
+      "taught_until": "2026-08-03",
+      "source_page": 8
+    },
+    "PH11.03": {
+      "name": "Torque about a point & an axis, equilibrium of rigid bodies, toppling",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260807,
+      "taught_from": "2026-08-04",
+      "taught_until": "2026-08-07",
+      "source_page": 8
+    },
+    "PH11.04": {
+      "name": "Moment of inertia, rotational KE",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260811,
+      "taught_from": "2026-08-11",
+      "taught_until": "2026-08-11",
+      "source_page": 9
+    },
+    "PH11.05": {
+      "name": "Ï„ = IÎ±: pure rotation (centroidal & non-centroidal axes)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260814,
+      "taught_from": "2026-08-12",
+      "taught_until": "2026-08-14",
+      "source_page": 9
+    },
+    "PH11.06": {
+      "name": "Systems with translating & rotating objects (pulleys + blocks)",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH11.07": {
+      "name": "Combined translation + rotation, instantaneous centre/axis of rotation",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260819,
+      "taught_from": "2026-08-17",
+      "taught_until": "2026-08-19",
+      "source_page": 9
+    },
+    "PH11.08": {
+      "name": "Pure rolling: s, v, a & radius of curvature of a point, KE of rolling, rolling as pure rotation",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260819,
+      "taught_from": "2026-08-17",
+      "taught_until": "2026-08-19",
+      "source_page": 9
+    },
+    "PH11.09": {
+      "name": "Rolling on a rough horizontal surface",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH11.10": {
+      "name": "Rolling on rough inclined & curved surfaces",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH11.11": {
+      "name": "Dynamics of rigid bodies with rope, wedge & rolling constraints",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH11.12": {
+      "name": "Work done by torque, work-energy theorem, energy conservation",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH11.13": {
+      "name": "Angular momentum: LCAM, LCM + LCAM, LCAM + LCE applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260825,
+      "taught_from": "2026-08-24",
+      "taught_until": "2026-08-25",
+      "source_page": 10
+    },
+    "PH11.14": {
+      "name": "Angular impulse, collisions: particle-rigid body, surface-rigid body, rigid body-rigid body",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260828,
+      "taught_from": "2026-08-26",
+      "taught_until": "2026-08-28",
+      "source_page": 10
+    },
+    "PH11.15": {
+      "name": "Gyroscopic motion, miscellaneous",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH12.01": {
+      "name": "Newton's law of gravitation (scalar & vector form)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270105,
+      "taught_from": "2027-01-04",
+      "taught_until": "2027-01-05",
+      "source_page": 19
+    },
+    "PH12.02": {
+      "name": "Gravitational field intensity: point masses & distributed mass",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270105,
+      "taught_from": "2027-01-04",
+      "taught_until": "2027-01-05",
+      "source_page": 19
+    },
+    "PH12.03": {
+      "name": "Gravitational PE & potential: point masses & extended masses",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270105,
+      "taught_from": "2027-01-04",
+      "taught_until": "2027-01-05",
+      "source_page": 19
+    },
+    "PH12.04": {
+      "name": "Relation between intensity & potential, equipotential surfaces",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH12.05": {
+      "name": "Acceleration due to gravity & variation of g",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270105,
+      "taught_from": "2027-01-04",
+      "taught_until": "2027-01-05",
+      "source_page": 19
+    },
+    "PH12.06": {
+      "name": "Self-energy, gravitational pressure",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270108,
+      "taught_from": "2027-01-08",
+      "taught_until": "2027-01-08",
+      "source_page": 19
+    },
+    "PH12.07": {
+      "name": "Work done by gravity, LCE, LCM & LCAM in long-range projectiles",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270107,
+      "taught_from": "2027-01-06",
+      "taught_until": "2027-01-07",
+      "source_page": 19
+    },
+    "PH12.08": {
+      "name": "Orbital velocity & satellite motion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270107,
+      "taught_from": "2027-01-06",
+      "taught_until": "2027-01-07",
+      "source_page": 19
+    },
+    "PH12.09": {
+      "name": "Kepler's laws of planetary motion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270107,
+      "taught_from": "2027-01-06",
+      "taught_until": "2027-01-07",
+      "source_page": 19
+    },
+    "PH13.01": {
+      "name": "Charge and its properties, methods of charging",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261214,
+      "taught_from": "2026-12-14",
+      "taught_until": "2026-12-14",
+      "source_page": 17
+    },
+    "PH13.02": {
+      "name": "Coulomb's law (scalar & vector form), force in dielectric medium",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261214,
+      "taught_from": "2026-12-14",
+      "taught_until": "2026-12-14",
+      "source_page": 17
+    },
+    "PH13.03": {
+      "name": "Superposition: force due to multiple point & distributed charges",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261214,
+      "taught_from": "2026-12-14",
+      "taught_until": "2026-12-14",
+      "source_page": 17
+    },
+    "PH13.04": {
+      "name": "Equilibrium of charges, nature of equilibrium, charge oscillations",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH13.05": {
+      "name": "Electric field, field lines, motion of charge in uniform & non-uniform E.F",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261215,
+      "taught_from": "2026-12-15",
+      "taught_until": "2026-12-15",
+      "source_page": 17
+    },
+    "PH13.06": {
+      "name": "E due to distributed charges",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261216,
+      "taught_from": "2026-12-16",
+      "taught_until": "2026-12-16",
+      "source_page": 17
+    },
+    "PH13.07": {
+      "name": "Electrostatic potential energy, P.E of system of charges",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261217,
+      "taught_from": "2026-12-17",
+      "taught_until": "2026-12-17",
+      "source_page": 17
+    },
+    "PH13.08": {
+      "name": "Electric potential: system of charges & distributed charges",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261218,
+      "taught_from": "2026-12-18",
+      "taught_until": "2026-12-18",
+      "source_page": 17
+    },
+    "PH13.09": {
+      "name": "Relation between E and V",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261221,
+      "taught_from": "2026-12-21",
+      "taught_until": "2026-12-21",
+      "source_page": 18
+    },
+    "PH13.10": {
+      "name": "Work-energy and conservation laws applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261221,
+      "taught_from": "2026-12-21",
+      "taught_until": "2026-12-21",
+      "source_page": 18
+    },
+    "PH13.11": {
+      "name": "Equipotential surfaces",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH13.12": {
+      "name": "Electric dipole",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261223,
+      "taught_from": "2026-12-23",
+      "taught_until": "2026-12-23",
+      "source_page": 18
+    },
+    "PH13.13": {
+      "name": "Electric flux",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261228,
+      "taught_from": "2026-12-28",
+      "taught_until": "2026-12-28",
+      "source_page": 18
+    },
+    "PH13.14": {
+      "name": "Gauss's law and its applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261229,
+      "taught_from": "2026-12-29",
+      "taught_until": "2026-12-29",
+      "source_page": 18
+    },
+    "PH13.15": {
+      "name": "Electrostatic induction, conductors & dielectrics in external field",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH13.16": {
+      "name": "System of parallel charged plates, concentric charged shells",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH13.17": {
+      "name": "Earthing and short-circuiting the conductor(s)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261231,
+      "taught_from": "2026-12-31",
+      "taught_until": "2026-12-31",
+      "source_page": 19
+    },
+    "PH13.18": {
+      "name": "Electrostatic pressure, field energy density, self energy and total energy",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH14.01": {
+      "name": "Electric current: instantaneous & average current, i-t graphs, drift velocity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270118,
+      "taught_from": "2027-01-18",
+      "taught_until": "2027-01-18",
+      "source_page": 20
+    },
+    "PH14.02": {
+      "name": "Ohm's law: ohmic & non-ohmic elements, current density, microscopic form, relaxation time, mobility, resistivity, temperature dependence",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270118,
+      "taught_from": "2027-01-18",
+      "taught_until": "2027-01-18",
+      "source_page": 20
+    },
+    "PH14.03": {
+      "name": "Electrical resistance: uniform & non-uniform conductors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270118,
+      "taught_from": "2027-01-18",
+      "taught_until": "2027-01-18",
+      "source_page": 20
+    },
+    "PH14.04": {
+      "name": "Kirchhoff's laws: series & parallel resistors, simple circuits",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270120,
+      "taught_from": "2027-01-19",
+      "taught_until": "2027-01-20",
+      "source_page": 20
+    },
+    "PH14.05": {
+      "name": "Equivalent resistance: series-parallel reduction, symmetry, bridge, star-delta",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270127,
+      "taught_from": "2027-01-25",
+      "taught_until": "2027-01-27",
+      "source_page": 21
+    },
+    "PH14.06": {
+      "name": "Complex circuits: nodal method, Thevenin & Norton, superposition, symmetry & reverse symmetry",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH14.07": {
+      "name": "Electrical energy: Joule's heating, power dissipation, maximum power theorem",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270122,
+      "taught_from": "2027-01-21",
+      "taught_until": "2027-01-22",
+      "source_page": 20
+    },
+    "PH14.08": {
+      "name": "Cells: EMF, internal resistance, terminal voltage, series/parallel/mixed grouping",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270122,
+      "taught_from": "2027-01-21",
+      "taught_until": "2027-01-22",
+      "source_page": 20
+    },
+    "PH14.09": {
+      "name": "Instruments: meter bridge, potentiometer, post office box",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270129,
+      "taught_from": "2027-01-29",
+      "taught_until": "2027-01-29",
+      "source_page": 21
+    },
+    "PH15.01": {
+      "name": "Capacitance: concept, capacitance of an isolated spherical conductor",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270201,
+      "taught_from": "2027-02-01",
+      "taught_until": "2027-02-01",
+      "source_page": 21
+    },
+    "PH15.02": {
+      "name": "Parallel plate, spherical & cylindrical capacitors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270201,
+      "taught_from": "2027-02-01",
+      "taught_until": "2027-02-01",
+      "source_page": 21
+    },
+    "PH15.03": {
+      "name": "Combination of capacitors: series, parallel, mixed, bridge & symmetry",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270205,
+      "taught_from": "2027-02-05",
+      "taught_until": "2027-02-05",
+      "source_page": 22
+    },
+    "PH15.04": {
+      "name": "Capacitor circuits: charge distribution, Kirchhoff's laws, node potential method",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270204,
+      "taught_from": "2027-02-04",
+      "taught_until": "2027-02-04",
+      "source_page": 22
+    },
+    "PH15.05": {
+      "name": "Dielectrics: polarization, dielectric constant, partial & multiple dielectric slabs",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270323,
+      "taught_from": "2027-03-22",
+      "taught_until": "2027-03-23",
+      "source_page": 24
+    },
+    "PH15.06": {
+      "name": "Energy stored, energy density, heat loss on redistribution of charge",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270203,
+      "taught_from": "2027-02-02",
+      "taught_until": "2027-02-03",
+      "source_page": 22
+    },
+    "PH15.07": {
+      "name": "Force between plates, work done in inserting a dielectric or moving plates",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH15.08": {
+      "name": "Sharing of charges, capacitor with battery connected & disconnected",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270203,
+      "taught_from": "2027-02-02",
+      "taught_until": "2027-02-03",
+      "source_page": 22
+    },
+    "PH16.01": {
+      "name": "Initial & steady-state circuits",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270326,
+      "taught_from": "2027-03-25",
+      "taught_until": "2027-03-26",
+      "source_page": 24
+    },
+    "PH16.02": {
+      "name": "Growth & decay circuits",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270326,
+      "taught_from": "2027-03-25",
+      "taught_until": "2027-03-26",
+      "source_page": 24
+    },
+    "PH16.03": {
+      "name": "Complex circuits, finding effective time constant",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270325,
+      "taught_from": "2027-03-25",
+      "taught_until": "2027-03-26",
+      "source_page": 24
+    },
+    "PH17.01": {
+      "name": "Magnetic force on a moving charge: Lorentz force & its properties",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270329,
+      "taught_from": "2027-03-29",
+      "taught_until": "2027-03-29",
+      "source_page": 24
+    },
+    "PH17.02": {
+      "name": "Motion of a charge in uniform B: circular & helical paths, pitch",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270331,
+      "taught_from": "2027-03-30",
+      "taught_until": "2027-03-31",
+      "source_page": 24
+    },
+    "PH17.03": {
+      "name": "Motion in combined E & B fields: velocity selector, cyclotron, crossed fields",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270331,
+      "taught_from": "2027-03-30",
+      "taught_until": "2027-03-31",
+      "source_page": 24
+    },
+    "PH17.04": {
+      "name": "Magnetic force on current-carrying conductors, force between parallel currents",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270405,
+      "taught_from": "2027-04-05",
+      "taught_until": "2027-04-05",
+      "source_page": 25
+    },
+    "PH17.05": {
+      "name": "Current loop in uniform B: magnetic moment, torque, potential energy",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270402,
+      "taught_from": "2027-04-02",
+      "taught_until": "2027-04-02",
+      "source_page": 24
+    },
+    "PH17.06": {
+      "name": "Moving coil galvanometer, conversion into ammeter & voltmeter",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270409,
+      "taught_from": "2027-04-09",
+      "taught_until": "2027-04-09",
+      "source_page": 25
+    },
+    "PH18.01": {
+      "name": "Biot-Savart law: field due to a current element",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270405,
+      "taught_from": "2027-04-05",
+      "taught_until": "2027-04-05",
+      "source_page": 25
+    },
+    "PH18.02": {
+      "name": "Field due to straight wires (finite & infinite), arcs, circular loop (centre & axis)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270405,
+      "taught_from": "2027-04-05",
+      "taught_until": "2027-04-05",
+      "source_page": 25
+    },
+    "PH18.03": {
+      "name": "Field due to combinations of wires & loops",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH18.04": {
+      "name": "AmpÃ¨re's circuital law: long wire, cylinder, solenoid, toroid",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270408,
+      "taught_from": "2027-04-06",
+      "taught_until": "2027-04-08",
+      "source_page": 25
+    },
+    "PH18.05": {
+      "name": "Field due to current sheets & slabs, cavity problems",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH18.06": {
+      "name": "Magnetic moment of current loops & rotating charged bodies",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH19.01": {
+      "name": "Magnetic flux, Faraday's law, Lenz's law",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270412,
+      "taught_from": "2027-04-12",
+      "taught_until": "2027-04-12",
+      "source_page": 25
+    },
+    "PH19.02": {
+      "name": "Motional EMF: rod, loop, rotating rod & disc in B",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270416,
+      "taught_from": "2027-04-13",
+      "taught_until": "2027-04-16",
+      "source_page": 25
+    },
+    "PH19.03": {
+      "name": "Motional EMF in circuits: forces, energy, terminal velocity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270416,
+      "taught_from": "2027-04-13",
+      "taught_until": "2027-04-16",
+      "source_page": 25
+    },
+    "PH19.04": {
+      "name": "Induced electric field due to time-varying B, eddy currents",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270420,
+      "taught_from": "2027-04-19",
+      "taught_until": "2027-04-20",
+      "source_page": 26
+    },
+    "PH19.05": {
+      "name": "Self-inductance: solenoid, energy stored in an inductor, magnetic energy density",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270421,
+      "taught_from": "2027-04-21",
+      "taught_until": "2027-04-21",
+      "source_page": 26
+    },
+    "PH19.06": {
+      "name": "Mutual inductance, coupled coils",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270427,
+      "taught_from": "2027-04-26",
+      "taught_until": "2027-04-27",
+      "source_page": 26
+    },
+    "PH19.07": {
+      "name": "LR circuits: growth & decay of current, time constant",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270423,
+      "taught_from": "2027-04-22",
+      "taught_until": "2027-04-23",
+      "source_page": 26
+    },
+    "PH19.08": {
+      "name": "LC oscillations",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270427,
+      "taught_from": "2027-04-26",
+      "taught_until": "2027-04-27",
+      "source_page": 26
+    },
+    "PH20.01": {
+      "name": "AC quantities: peak, average & RMS values, phasors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270504,
+      "taught_from": "2027-05-03",
+      "taught_until": "2027-05-04",
+      "source_page": 27
+    },
+    "PH20.02": {
+      "name": "Purely resistive, inductive & capacitive circuits: reactance, phase relations",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270504,
+      "taught_from": "2027-05-03",
+      "taught_until": "2027-05-04",
+      "source_page": 27
+    },
+    "PH20.03": {
+      "name": "Series LR, RC & LCR circuits: impedance, phase angle",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270505,
+      "taught_from": "2027-05-05",
+      "taught_until": "2027-05-05",
+      "source_page": 27
+    },
+    "PH20.04": {
+      "name": "Resonance: series resonance, Q-factor, bandwidth, parallel resonance",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270506,
+      "taught_from": "2027-05-06",
+      "taught_until": "2027-05-07",
+      "source_page": 27
+    },
+    "PH20.05": {
+      "name": "Power in AC circuits: average power, power factor, wattless current",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270507,
+      "taught_from": "2027-05-06",
+      "taught_until": "2027-05-07",
+      "source_page": 27
+    },
+    "PH20.06": {
+      "name": "Transformer & AC generator",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH21.01": {
+      "name": "Magnetic moment, net magnetic moment",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH21.02": {
+      "name": "Magnetic field of a bar magnet: axial line, equatorial line, general point",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270428,
+      "taught_from": "2027-04-28",
+      "taught_until": "2027-04-28",
+      "source_page": 26
+    },
+    "PH21.03": {
+      "name": "Bar magnet in uniform & non-uniform fields: torque & potential energy",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270430,
+      "taught_from": "2027-04-29",
+      "taught_until": "2027-04-30",
+      "source_page": 26
+    },
+    "PH21.04": {
+      "name": "Tangent law & Earth's field, oscillation of a bar magnet, vibration magnetometer",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH21.05": {
+      "name": "Dipole-dipole interaction",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH21.06": {
+      "name": "Magnetic field lines & flux, null points, Gauss law for magnetism",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270428,
+      "taught_from": "2027-04-28",
+      "taught_until": "2027-04-28",
+      "source_page": 26
+    },
+    "PH21.07": {
+      "name": "Earth's magnetism: magnetic elements, declination, inclination",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH21.08": {
+      "name": "Magnetic materials: magnetisation, susceptibility, Curie law, hysteresis",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270430,
+      "taught_from": "2027-04-29",
+      "taught_until": "2027-04-30",
+      "source_page": 26
+    },
+    "PH22.01": {
+      "name": "Displacement current & Maxwell's equations",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270616,
+      "taught_from": "2027-06-16",
+      "taught_until": "2027-06-16",
+      "source_page": 30
+    },
+    "PH22.02": {
+      "name": "Nature of EM waves: transverse nature, speed in vacuum & media, E0/B0 = c",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270616,
+      "taught_from": "2027-06-16",
+      "taught_until": "2027-06-16",
+      "source_page": 30
+    },
+    "PH22.03": {
+      "name": "EM wave equations for E and B",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270616,
+      "taught_from": "2027-06-16",
+      "taught_until": "2027-06-16",
+      "source_page": 30
+    },
+    "PH22.04": {
+      "name": "Energy & momentum: energy density, Poynting vector, intensity",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270616,
+      "taught_from": "2027-06-16",
+      "taught_until": "2027-06-16",
+      "source_page": 30
+    },
+    "PH22.05": {
+      "name": "Electromagnetic spectrum: classification, ranges, properties & applications",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270616,
+      "taught_from": "2027-06-16",
+      "taught_until": "2027-06-16",
+      "source_page": 30
+    },
+    "PH23.01": {
+      "name": "Condition for SHM: differential & standard equation, identifying SHM",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261109,
+      "taught_from": "2026-11-09",
+      "taught_until": "2026-11-09",
+      "source_page": 15
+    },
+    "PH23.02": {
+      "name": "Kinematics of simple harmonic oscillators",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261110,
+      "taught_from": "2026-11-10",
+      "taught_until": "2026-11-10",
+      "source_page": 15
+    },
+    "PH23.03": {
+      "name": "Reference circle & phasor applications",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH23.04": {
+      "name": "Energy of a simple harmonic oscillator",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261112,
+      "taught_from": "2026-11-12",
+      "taught_until": "2026-11-12",
+      "source_page": 15
+    },
+    "PH23.05": {
+      "name": "Graphs: y, v, a vs t, KE & PE",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261110,
+      "taught_from": "2026-11-10",
+      "taught_until": "2026-11-10",
+      "source_page": 15
+    },
+    "PH23.06": {
+      "name": "Spring-mass system",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261111,
+      "taught_from": "2026-11-11",
+      "taught_until": "2026-11-11",
+      "source_page": 15
+    },
+    "PH23.07": {
+      "name": "Simple pendulum",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261116,
+      "taught_from": "2026-11-16",
+      "taught_until": "2026-11-16",
+      "source_page": 15
+    },
+    "PH23.08": {
+      "name": "Angular SHM",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH23.09": {
+      "name": "Physical pendulum (rigid body oscillations)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261116,
+      "taught_from": "2026-11-16",
+      "taught_until": "2026-11-16",
+      "source_page": 15
+    },
+    "PH23.10": {
+      "name": "Various types of simple harmonic oscillators",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261119,
+      "taught_from": "2026-11-19",
+      "taught_until": "2026-11-19",
+      "source_page": 15
+    },
+    "PH23.11": {
+      "name": "Energy conservation method for time period",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261112,
+      "taught_from": "2026-11-12",
+      "taught_until": "2026-11-12",
+      "source_page": 15
+    },
+    "PH23.12": {
+      "name": "Constrained & combined SHM, two-body oscillations",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH23.13": {
+      "name": "Superposition of SHMs",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH23.14": {
+      "name": "Damped & forced oscillations",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261119,
+      "taught_from": "2026-11-19",
+      "taught_until": "2026-11-19",
+      "source_page": 15
+    },
+    "PH24.01": {
+      "name": "Wave motion: types, wave equation y(x, t), phase, particle velocity & acceleration",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261127,
+      "taught_from": "2026-11-26",
+      "taught_until": "2026-11-27",
+      "source_page": 16
+    },
+    "PH24.02": {
+      "name": "Speed of transverse waves on a string, energy, power & intensity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261127,
+      "taught_from": "2026-11-26",
+      "taught_until": "2026-11-27",
+      "source_page": 16
+    },
+    "PH24.03": {
+      "name": "Superposition & interference, reflection & transmission at boundaries",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261201,
+      "taught_from": "2026-12-01",
+      "taught_until": "2026-12-01",
+      "source_page": 16
+    },
+    "PH24.04": {
+      "name": "Standing waves: strings fixed at one & both ends, harmonics, sonometer",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261202,
+      "taught_from": "2026-12-02",
+      "taught_until": "2026-12-02",
+      "source_page": 16
+    },
+    "PH24.05": {
+      "name": "Sound waves: pressure & displacement waves, speed of sound, intensity, decibels",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261204,
+      "taught_from": "2026-12-03",
+      "taught_until": "2026-12-04",
+      "source_page": 16
+    },
+    "PH24.06": {
+      "name": "Organ pipes: open & closed pipes, end correction, resonance tube",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261208,
+      "taught_from": "2026-12-07",
+      "taught_until": "2026-12-08",
+      "source_page": 17
+    },
+    "PH24.07": {
+      "name": "Beats",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261209,
+      "taught_from": "2026-12-09",
+      "taught_until": "2026-12-09",
+      "source_page": 17
+    },
+    "PH24.08": {
+      "name": "Doppler effect: moving source & observer, reflection, moving medium",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261211,
+      "taught_from": "2026-12-10",
+      "taught_until": "2026-12-11",
+      "source_page": 17
+    },
+    "PH25.01": {
+      "name": "Temperature & thermometry: temperature scales, thermometers",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260928,
+      "taught_from": "2026-09-28",
+      "taught_until": "2026-09-28",
+      "source_page": 12
+    },
+    "PH25.02": {
+      "name": "Linear, areal & volume expansion, relation between Î±, Î² & Î³",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260929,
+      "taught_from": "2026-09-29",
+      "taught_until": "2026-09-29",
+      "source_page": 12
+    },
+    "PH25.03": {
+      "name": "Applications: bimetallic strip, pendulum clocks, measurement errors in scales",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH25.04": {
+      "name": "Thermal stress & strain",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH25.05": {
+      "name": "Expansion of liquids: real & apparent expansion, anomalous expansion of water",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260930,
+      "taught_from": "2026-09-30",
+      "taught_until": "2026-09-30",
+      "source_page": 12
+    },
+    "PH26.01": {
+      "name": "Ideal gas equation, gas laws, mixture of gases",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261009,
+      "taught_from": "2026-10-07",
+      "taught_until": "2026-10-09",
+      "source_page": 13
+    },
+    "PH26.02": {
+      "name": "Kinetic theory: pressure of a gas, kinetic interpretation of temperature",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261005,
+      "taught_from": "2026-10-05",
+      "taught_until": "2026-10-05",
+      "source_page": 13
+    },
+    "PH26.03": {
+      "name": "Molecular speeds: rms, average & most probable, Maxwell distribution",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261006,
+      "taught_from": "2026-10-06",
+      "taught_until": "2026-10-06",
+      "source_page": 13
+    },
+    "PH26.04": {
+      "name": "Degrees of freedom, law of equipartition of energy, specific heats of gases",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH26.05": {
+      "name": "Mean free path, real gases (van der Waals equation)",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH26.06": {
+      "name": "Specific heat, heat capacity, water equivalent",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261002,
+      "taught_from": "2026-10-01",
+      "taught_until": "2026-10-02",
+      "source_page": 13
+    },
+    "PH26.07": {
+      "name": "Latent heat, phase changes, heating curves",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261002,
+      "taught_from": "2026-10-01",
+      "taught_until": "2026-10-02",
+      "source_page": 13
+    },
+    "PH26.08": {
+      "name": "Principle of calorimetry: mixtures with & without phase change",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261002,
+      "taught_from": "2026-10-01",
+      "taught_until": "2026-10-02",
+      "source_page": 13
+    },
+    "PH27.01": {
+      "name": "Thermodynamic systems, zeroth law, internal energy, work done by a gas",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH27.02": {
+      "name": "First law of thermodynamics",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261012,
+      "taught_from": "2026-10-12",
+      "taught_until": "2026-10-12",
+      "source_page": 13
+    },
+    "PH27.03": {
+      "name": "Isothermal, adiabatic, isobaric & isochoric processes, free expansion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261016,
+      "taught_from": "2026-10-15",
+      "taught_until": "2026-10-16",
+      "source_page": 13
+    },
+    "PH27.04": {
+      "name": "Polytropic processes, molar heat capacity of a process",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH27.05": {
+      "name": "Cyclic processes, graph conversions (P-V, P-T, V-T)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261016,
+      "taught_from": "2026-10-15",
+      "taught_until": "2026-10-16",
+      "source_page": 13
+    },
+    "PH27.06": {
+      "name": "Heat engines, efficiency, Carnot cycle",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261016,
+      "taught_from": "2026-10-15",
+      "taught_until": "2026-10-16",
+      "source_page": 13
+    },
+    "PH27.07": {
+      "name": "Refrigerators & heat pumps, coefficient of performance",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH27.08": {
+      "name": "Second law of thermodynamics, entropy",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261016,
+      "taught_from": "2026-10-15",
+      "taught_until": "2026-10-16",
+      "source_page": 13
+    },
+    "PH28.01": {
+      "name": "Conduction: Fourier's law, thermal conductivity, thermal resistance",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261028,
+      "taught_from": "2026-10-26",
+      "taught_until": "2026-10-28",
+      "source_page": 14
+    },
+    "PH28.02": {
+      "name": "Series & parallel combination of conductors, steady-state problems",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH28.03": {
+      "name": "Variable-state conduction: growth of ice layer, radial heat flow",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH28.04": {
+      "name": "Convection",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH28.05": {
+      "name": "Radiation: black body, Kirchhoff's law, Stefan-Boltzmann law",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261030,
+      "taught_from": "2026-10-29",
+      "taught_until": "2026-10-30",
+      "source_page": 14
+    },
+    "PH28.06": {
+      "name": "Wien's displacement law, Newton's law of cooling",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH29.01": {
+      "name": "Reflection at plane mirrors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270517,
+      "taught_from": "2027-05-17",
+      "taught_until": "2027-05-17",
+      "source_page": 28
+    },
+    "PH29.02": {
+      "name": "Reflection at spherical mirrors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270521,
+      "taught_from": "2027-05-18",
+      "taught_until": "2027-05-21",
+      "source_page": 28
+    },
+    "PH29.03": {
+      "name": "Combination of plane & spherical mirrors",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH29.04": {
+      "name": "Refraction through plane surfaces",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270524,
+      "taught_from": "2027-05-24",
+      "taught_until": "2027-05-24",
+      "source_page": 28
+    },
+    "PH29.05": {
+      "name": "Total internal reflection",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270525,
+      "taught_from": "2027-05-25",
+      "taught_until": "2027-05-25",
+      "source_page": 28
+    },
+    "PH29.06": {
+      "name": "Refraction + reflection at plane surfaces",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH29.07": {
+      "name": "Prism, dispersion",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270528,
+      "taught_from": "2027-05-27",
+      "taught_until": "2027-05-28",
+      "source_page": 28
+    },
+    "PH29.08": {
+      "name": "Refraction at curved surface(s)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270526,
+      "taught_from": "2027-05-26",
+      "taught_until": "2027-05-26",
+      "source_page": 28
+    },
+    "PH29.09": {
+      "name": "Thin lenses: lens maker's formula, power, image formation",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270602,
+      "taught_from": "2027-06-01",
+      "taught_until": "2027-06-02",
+      "source_page": 29
+    },
+    "PH29.10": {
+      "name": "Combination of optical elements (mirrors, lenses, slabs, prisms)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270603,
+      "taught_from": "2027-06-03",
+      "taught_until": "2027-06-03",
+      "source_page": 29
+    },
+    "PH29.11": {
+      "name": "Optical instruments",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270614,
+      "taught_from": "2027-06-14",
+      "taught_until": "2027-06-14",
+      "source_page": 30
+    },
+    "PH30.01": {
+      "name": "Basic theories: corpuscular theory, wavefronts, Huygens' principle, reflection & refraction",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270607,
+      "taught_from": "2027-06-07",
+      "taught_until": "2027-06-07",
+      "source_page": 29
+    },
+    "PH30.02": {
+      "name": "Interference: coherent sources, phase & path difference, maxima/minima, resultant intensity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270608,
+      "taught_from": "2027-06-08",
+      "taught_until": "2027-06-08",
+      "source_page": 29
+    },
+    "PH30.03": {
+      "name": "Young's double slit experiment: results & applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270608,
+      "taught_from": "2027-06-08",
+      "taught_until": "2027-06-08",
+      "source_page": 29
+    },
+    "PH30.04": {
+      "name": "YDSE variants: white light, multiple slits, phasors, Fresnel's biprism, Lloyd's mirror",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270610,
+      "taught_from": "2027-06-10",
+      "taught_until": "2027-06-10",
+      "source_page": 29
+    },
+    "PH30.05": {
+      "name": "Diffraction: single slit, circular aperture, resolving power, Fresnel distance & zones",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270611,
+      "taught_from": "2027-06-11",
+      "taught_until": "2027-06-11",
+      "source_page": 29
+    },
+    "PH30.06": {
+      "name": "Polarization: methods (reflection, absorption, scattering), Malus' law",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270615,
+      "taught_from": "2027-06-15",
+      "taught_until": "2027-06-15",
+      "source_page": 30
+    },
+    "PH31.01": {
+      "name": "Photon theory: energy, momentum, radiation pressure, intensity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270618,
+      "taught_from": "2027-06-17",
+      "taught_until": "2027-06-18",
+      "source_page": 30
+    },
+    "PH31.02": {
+      "name": "Photoelectric effect: Einstein's equation, laws of photoelectric effect",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270618,
+      "taught_from": "2027-06-17",
+      "taught_until": "2027-06-18",
+      "source_page": 30
+    },
+    "PH31.03": {
+      "name": "Matter waves: de Broglie wavelength, electron diffraction",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270622,
+      "taught_from": "2027-06-21",
+      "taught_until": "2027-06-22",
+      "source_page": 31
+    },
+    "PH31.04": {
+      "name": "Early models of the atom & their limitations",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270623,
+      "taught_from": "2027-06-23",
+      "taught_until": "2027-06-23",
+      "source_page": 31
+    },
+    "PH31.05": {
+      "name": "Bohr's model: quantities & their dependence on Z, n, e, m",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270623,
+      "taught_from": "2027-06-23",
+      "taught_until": "2027-06-23",
+      "source_page": 31
+    },
+    "PH31.06": {
+      "name": "Applications of Bohr's model: hypothetical atoms, other atomic systems",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH31.07": {
+      "name": "Atomic excitation: excitation & ionization energy, reduced mass, atomic collisions",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270624,
+      "taught_from": "2027-06-24",
+      "taught_until": "2027-06-24",
+      "source_page": 31
+    },
+    "PH31.08": {
+      "name": "Hydrogen spectrum: H & H-like ions, emission & absorption spectra",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270623,
+      "taught_from": "2027-06-23",
+      "taught_until": "2027-06-23",
+      "source_page": 31
+    },
+    "PH31.09": {
+      "name": "Production of X-rays: Coolidge tube",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270625,
+      "taught_from": "2027-06-25",
+      "taught_until": "2027-06-25",
+      "source_page": 31
+    },
+    "PH31.10": {
+      "name": "X-ray spectra: continuous & characteristic",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270625,
+      "taught_from": "2027-06-25",
+      "taught_until": "2027-06-25",
+      "source_page": 31
+    },
+    "PH31.11": {
+      "name": "Moseley's law",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH32.01": {
+      "name": "Nucleus & nuclear forces: size, charge, density, properties of nuclear force",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270629,
+      "taught_from": "2027-06-29",
+      "taught_until": "2027-06-29",
+      "source_page": 32
+    },
+    "PH32.02": {
+      "name": "Mass defect & binding energy: BE per nucleon, BE curve, nuclear stability",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270629,
+      "taught_from": "2027-06-29",
+      "taught_until": "2027-06-29",
+      "source_page": 32
+    },
+    "PH32.03": {
+      "name": "Radioactive decays: Î±, Î², Î³ decay, Q-value, Î± & Î² spectra",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270701,
+      "taught_from": "2027-07-01",
+      "taught_until": "2027-07-01",
+      "source_page": 32
+    },
+    "PH32.04": {
+      "name": "Law of radioactivity: decay constant, half-life, mean life",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270630,
+      "taught_from": "2027-06-30",
+      "taught_until": "2027-06-30",
+      "source_page": 32
+    },
+    "PH32.05": {
+      "name": "Nuclear reactions: types, Q-value, threshold energy",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270702,
+      "taught_from": "2027-07-02",
+      "taught_until": "2027-07-02",
+      "source_page": 33
+    },
+    "PH32.06": {
+      "name": "Nuclear fission & fusion: energy release, chain reaction, applications",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270702,
+      "taught_from": "2027-07-02",
+      "taught_until": "2027-07-02",
+      "source_page": 33
+    },
+    "PH33.01": {
+      "name": "Energy bands, band gap, intrinsic & extrinsic (n-type, p-type) semiconductors",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.02": {
+      "name": "Current conduction: mobility, conductivity, carrier density",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.03": {
+      "name": "p-n junction diode: depletion region, forward & reverse bias, drift & diffusion currents, characteristics",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.04": {
+      "name": "Rectifiers: half-wave & full-wave",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.05": {
+      "name": "Zener diode & voltage regulation",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.06": {
+      "name": "Optoelectronic devices: LEDs, photodiodes, solar cells",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.07": {
+      "name": "Logic gates: basic (AND, OR, NOT), universal (NAND, NOR), special (XOR, XNOR)",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH33.08": {
+      "name": "Truth tables & Boolean algebra: laws & simplification",
+      "mapping_status": "needs_review",
+      "reason": "Schedule heading does not establish full scope/internal order of this code; verify before automatic assignment.",
+      "teaching_rank": 20270705,
+      "taught_from": "2027-07-05",
+      "taught_until": "2027-07-09",
+      "source_page": 33
+    },
+    "PH34.01": {
+      "name": "Elements of a communication system, basic terminology",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH34.02": {
+      "name": "Bandwidth of signals & transmission media",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH34.03": {
+      "name": "Propagation of EM waves: ground, sky & space wave, range of an antenna",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH34.04": {
+      "name": "Modulation: need, amplitude modulation, modulation index, sidebands",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH34.05": {
+      "name": "Production & detection of AM, frequency modulation (basic)",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH35.01": {
+      "name": "Pressure & density: gauge/absolute/atmospheric pressure, pressure gradient, relative density",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260831,
+      "taught_from": "2026-08-31",
+      "taught_until": "2026-08-31",
+      "source_page": 10
+    },
+    "PH35.02": {
+      "name": "Liquid columns: manometer, U-tube, barometer",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH35.03": {
+      "name": "Thrust on container walls & immersed surfaces",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260901,
+      "taught_from": "2026-09-01",
+      "taught_until": "2026-09-01",
+      "source_page": 10
+    },
+    "PH35.04": {
+      "name": "Liquids in accelerating containers & tubes",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260902,
+      "taught_from": "2026-09-02",
+      "taught_until": "2026-09-02",
+      "source_page": 10
+    },
+    "PH35.05": {
+      "name": "Archimedes' principle: floating & immersed objects, kinematics of sinking objects",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260904,
+      "taught_from": "2026-09-03",
+      "taught_until": "2026-09-04",
+      "source_page": 10
+    },
+    "PH35.06": {
+      "name": "Equilibrium & stability of floating bodies",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260904,
+      "taught_from": "2026-09-03",
+      "taught_until": "2026-09-04",
+      "source_page": 10
+    },
+    "PH36.01": {
+      "name": "Fluid flow: ideal vs real, steady vs unsteady, streamlines, laminar vs turbulent",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260907,
+      "taught_from": "2026-09-07",
+      "taught_until": "2026-09-07",
+      "source_page": 11
+    },
+    "PH36.02": {
+      "name": "Equation of continuity: flow speed vs cross-section",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260907,
+      "taught_from": "2026-09-07",
+      "taught_until": "2026-09-07",
+      "source_page": 11
+    },
+    "PH36.03": {
+      "name": "Bernoulli's theorem & applications: venturimeter, pitot tube, atomizer, aerodynamic lift",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260911,
+      "taught_from": "2026-09-11",
+      "taught_until": "2026-09-11",
+      "source_page": 11
+    },
+    "PH36.04": {
+      "name": "Efflux of liquid: Torricelli's theorem",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260909,
+      "taught_from": "2026-09-08",
+      "taught_until": "2026-09-09",
+      "source_page": 11
+    },
+    "PH37.01": {
+      "name": "Viscous force, Newton's law of viscosity, coefficient of viscosity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260925,
+      "taught_from": "2026-09-24",
+      "taught_until": "2026-09-25",
+      "source_page": 12
+    },
+    "PH37.02": {
+      "name": "Stokes' law, terminal velocity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260925,
+      "taught_from": "2026-09-24",
+      "taught_until": "2026-09-25",
+      "source_page": 12
+    },
+    "PH37.03": {
+      "name": "Poiseuille's equation, flow through tubes in series & parallel",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260925,
+      "taught_from": "2026-09-24",
+      "taught_until": "2026-09-25",
+      "source_page": 12
+    },
+    "PH37.04": {
+      "name": "Reynolds number, critical velocity, effect of temperature on viscosity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260925,
+      "taught_from": "2026-09-24",
+      "taught_until": "2026-09-25",
+      "source_page": 12
+    },
+    "PH38.01": {
+      "name": "Stress, strain, Hooke's law, stress-strain curve",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260916,
+      "taught_from": "2026-09-14",
+      "taught_until": "2026-09-16",
+      "source_page": 11
+    },
+    "PH38.02": {
+      "name": "Young's modulus: loaded wires, rods under own weight, rotating rods",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260916,
+      "taught_from": "2026-09-14",
+      "taught_until": "2026-09-16",
+      "source_page": 11
+    },
+    "PH38.03": {
+      "name": "Bulk & shear modulus, compressibility, Poisson's ratio",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260916,
+      "taught_from": "2026-09-14",
+      "taught_until": "2026-09-16",
+      "source_page": 11
+    },
+    "PH38.04": {
+      "name": "Elastic potential energy, energy density",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH38.05": {
+      "name": "Composite wires & rods: series & parallel combinations",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH39.01": {
+      "name": "Surface tension: molecular theory, force due to surface tension",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260917,
+      "taught_from": "2026-09-17",
+      "taught_until": "2026-09-17",
+      "source_page": 12
+    },
+    "PH39.02": {
+      "name": "Surface energy: forming drops & bubbles, merging & splitting drops",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260917,
+      "taught_from": "2026-09-17",
+      "taught_until": "2026-09-17",
+      "source_page": 12
+    },
+    "PH39.03": {
+      "name": "Excess pressure: drops, soap bubbles, air bubble in a liquid",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260918,
+      "taught_from": "2026-09-18",
+      "taught_until": "2026-09-18",
+      "source_page": 12
+    },
+    "PH39.04": {
+      "name": "Angle of contact, capillary rise, Jurin's law, tube of insufficient length",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260923,
+      "taught_from": "2026-09-22",
+      "taught_until": "2026-09-23",
+      "source_page": 12
+    },
+    "PH39.05": {
+      "name": "Force between plates with a liquid film, miscellaneous",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH40.01": {
+      "name": "Physical quantities, SI units, fundamental & derived units",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260413,
+      "taught_from": "2026-04-13",
+      "taught_until": "2026-04-13",
+      "source_page": 2
+    },
+    "PH40.02": {
+      "name": "Dimensional formulae, principle of homogeneity",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260413,
+      "taught_from": "2026-04-13",
+      "taught_until": "2026-04-13",
+      "source_page": 2
+    },
+    "PH40.03": {
+      "name": "Applications of dimensional analysis: unit conversion, checking & deriving relations, limitations",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260413,
+      "taught_from": "2026-04-13",
+      "taught_until": "2026-04-13",
+      "source_page": 2
+    },
+    "PH40.04": {
+      "name": "Significant figures, rounding off",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261104,
+      "taught_from": "2026-11-03",
+      "taught_until": "2026-11-04",
+      "source_page": 14
+    },
+    "PH40.05": {
+      "name": "Errors: absolute, relative & percentage, propagation of errors",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261104,
+      "taught_from": "2026-11-03",
+      "taught_until": "2026-11-04",
+      "source_page": 14
+    },
+    "PH40.06": {
+      "name": "Least count, zero error, systematic & random errors",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.01": {
+      "name": "Vernier callipers & screw gauge",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20261106,
+      "taught_from": "2026-11-06",
+      "taught_until": "2026-11-06",
+      "source_page": 14
+    },
+    "PH41.02": {
+      "name": "Simple pendulum: determination of g",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.03": {
+      "name": "Young's modulus by Searle's method",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.04": {
+      "name": "Surface tension by capillary rise",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20260923,
+      "taught_from": "2026-09-22",
+      "taught_until": "2026-09-23",
+      "source_page": 12
+    },
+    "PH41.05": {
+      "name": "Coefficient of viscosity by terminal velocity",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.06": {
+      "name": "Speed of sound using a resonance column",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.07": {
+      "name": "Specific heat of a liquid by the method of mixtures",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.08": {
+      "name": "Focal length of a concave mirror & convex lens (u-v method)",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270604,
+      "taught_from": "2027-06-04",
+      "taught_until": "2027-06-04",
+      "source_page": 29
+    },
+    "PH41.09": {
+      "name": "Refractive index of a glass slab using a travelling microscope",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270604,
+      "taught_from": "2027-06-04",
+      "taught_until": "2027-06-04",
+      "source_page": 29
+    },
+    "PH41.10": {
+      "name": "Verification of Ohm's law, resistivity using a meter bridge",
+      "mapping_status": "needs_review",
+      "reason": "No exact teaching slot verified; broad or combined concepts may require splitting."
+    },
+    "PH41.11": {
+      "name": "Unknown resistance using a post office box",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270129,
+      "taught_from": "2027-01-29",
+      "taught_until": "2027-01-29",
+      "source_page": 21
+    },
+    "PH41.12": {
+      "name": "Galvanometer: resistance & figure of merit",
+      "mapping_status": "verified",
+      "reason": "Mapped to explicit teaching content; shared slots intentionally share rank.",
+      "teaching_rank": 20270129,
+      "taught_from": "2027-01-29",
+      "taught_until": "2027-01-29",
+      "source_page": 21
+    }
+  }
+}

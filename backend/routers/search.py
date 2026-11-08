@@ -149,7 +149,7 @@ def _build_facets() -> dict:
             "SELECT qt.topic_code, COUNT(DISTINCT qt.question_id) AS c"
             " FROM question_topics qt JOIN questions q ON q.id = qt.question_id"
             " JOIN papers p ON p.id = q.paper_id"
-            " WHERE p.status = 'done' GROUP BY qt.topic_code").fetchall()}
+            " WHERE p.status = 'done' AND qt.rank = 0 GROUP BY qt.topic_code").fetchall()}
         # Distinct-question counts per subtree root (any level): a question
         # with two tags under one module counts once. The recursive CTE
         # walks topics(parent) down from every node; UNION dedupes.
@@ -163,7 +163,7 @@ def _build_facets() -> dict:
             " FROM d JOIN question_topics qt ON qt.topic_code = d.code"
             " JOIN questions q ON q.id = qt.question_id"
             " JOIN papers p ON p.id = q.paper_id"
-            " WHERE p.status = 'done' GROUP BY d.root").fetchall()}
+            " WHERE p.status = 'done' AND qt.rank = 0 GROUP BY d.root").fetchall()}
         papers = _papers_snapshot(conn)
         institutes = _institute_groups(conn)
     finally:
@@ -283,6 +283,7 @@ def search_questions(
     topic: list[str] = Query(default=[]),
     limit: int = Query(default=PAGE_DEFAULT, ge=1, le=PAGE_MAX),
     cursor: str | None = None,
+    include_supporting: bool = False,
 ):
     qtypes = _norm_list(qtype)
     diffs = _norm_list(difficulty)
@@ -304,7 +305,7 @@ def search_questions(
 
     filters = {"qtype": qtypes, "difficulty": diffs, "exam": exams,
                "institute": inst_names, "year": years, "topic": topics,
-               "limit": limit}
+               "limit": limit, "include_supporting": include_supporting}
     fp = _fingerprint(filters)
     last_id = 0
     if cursor:
@@ -349,7 +350,8 @@ def search_questions(
                 " UNION SELECT t.code FROM topics t"
                 " JOIN d ON t.parent = d.code)"
                 " SELECT code FROM d) dd ON dd.code = qt.topic_code"
-                " WHERE qt.question_id = q.id)")
+                " WHERE qt.question_id = q.id"
+                + ("" if include_supporting else " AND qt.rank = 0") + ")")
             params["topics"] = json.dumps(topics)
         if qtypes:
             where.append("q.qtype IN (%s)" % ",".join(
@@ -415,7 +417,8 @@ def search_questions(
                       "institute": p.get("institute"), "year": p.get("year")},
             "chapters": chapters[:2],
             "chapterOverflow": max(0, len(chapters) - 2),
-            "topics": [{"code": c, "name": tmap[c]["name"]} for c in codes
+            "primaryTopic": codes[0] if codes else None,
+            "topics": [{"code": c, "name": tmap[c]["name"], "role": "primary" if i == 0 else "supporting"} for i, c in enumerate(codes)
                        if c in tmap],
             "preview": preview_text(tex),
             "thumb": _thumb_url(r["paper_id"], r["question_number"]),

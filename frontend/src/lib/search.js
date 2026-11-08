@@ -6,13 +6,13 @@
  */
 import { browser } from '$app/environment';
 
-export const SEARCH_KEY = 'pl-search-v2';
+export const SEARCH_KEY = 'pl-search-v3';
 export const PAGE_SIZE = 15;
 
 export const FILTER_KEYS = ['qtype', 'difficulty', 'exam', 'institute', 'year', 'topic'];
 
 export function defaultFilters() {
-	return { qtype: [], difficulty: [], exam: [], institute: [], year: [], topic: [] };
+	return { qtype: [], difficulty: [], exam: [], institute: [], year: [], topic: [], include_supporting: false };
 }
 
 export function activeFilterCount(filters) {

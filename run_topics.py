@@ -15,6 +15,7 @@ Defaults: every question with no human topics and no auto topics yet.
 from __future__ import annotations
 
 import os
+import json
 import re
 import sys
 import time
@@ -23,6 +24,7 @@ from pathlib import Path
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
 import directory_manager
+from teaching_order import select_primary, CLASSIFIER_VERSION
 from llm import get_llm, invoke_with_retry
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -45,7 +47,7 @@ def build_topic_list() -> list[tuple[int, str]]:
     conn = database.get_connection()
     try:
         rows = conn.execute(
-            "SELECT code, parent, level, name FROM topics ORDER BY rowid"
+            "SELECT code, parent, level, name, descr FROM topics ORDER BY rowid"
         ).fetchall()
     finally:
         conn.close()
@@ -60,7 +62,10 @@ def build_topic_list() -> list[tuple[int, str]]:
         while cur is not None and cur in by_code:
             parts.append(by_code[cur]["name"])
             cur = by_code[cur]["parent"]
-        out.append((n, " › ".join(reversed(parts))))
+        path = " › ".join(reversed(parts))
+        if r["descr"]:
+            path += " | Scope: " + r["descr"]
+        out.append((n, path))
     return out
 
 
@@ -86,6 +91,30 @@ def parse_topics_output(text: str, n_topics: int) -> dict:
     """
     errors: list[str] = []
     numbers: list[int] = []
+    # Structured replies include evidence for each required concept. Legacy
+    # replies remain readable for saved outputs and older integrations.
+    if (text or "").strip().startswith("{"):
+        try:
+            payload = json.loads(text)
+            required = payload["required_topics"]
+            if not isinstance(required, list):
+                raise ValueError("required_topics must be a list")
+            evidence = []
+            for item in required:
+                if (not isinstance(item, dict) or type(item.get("number")) is not int
+                        or not isinstance(item.get("evidence"), str)
+                        or not item["evidence"].strip()):
+                    raise ValueError("each required topic needs an integer number and evidence")
+                evidence.append(f"{item['number']}: {item['evidence']}")
+            legacy = ("TOPICS: " + (", ".join(str(t["number"]) for t in required) or "NONE")
+                      + "\nDIFFICULTY: " + str(payload.get("difficulty") or "NONE")
+                      + "\nSUGGESTION: " + str(payload.get("suggestion") or "NONE"))
+            result = parse_topics_output(legacy, n_topics)
+            result["evidence"] = evidence
+            return result
+        except (ValueError, KeyError, TypeError) as exc:
+            return {"numbers": [], "difficulty": None, "suggestion": None,
+                    "errors": [f"Invalid classifier JSON: {exc}"]}
     m = TOPICS_RE.search(text or "")
     if m:
         raw = m.group(1).strip()
@@ -103,7 +132,6 @@ def parse_topics_output(text: str, n_topics: int) -> dict:
                     continue
                 if v not in numbers:
                     numbers.append(v)
-            numbers = numbers[:3]
     else:
         errors.append("missing TOPICS line")
     difficulty = None
@@ -142,6 +170,14 @@ def classify_question(paper_id: int, question_number: str,
         if (qdir / "solution.tex").is_file() else ""
     if not qtex.strip():
         return {"ok": False, "error": "question.tex missing/empty"}
+    if not stex.strip():
+        assignment = select_primary([])
+        assignment["reason"] = "Solution missing/empty; required concepts need review"
+        database.save_topic_classification(
+            database.get_question_id(paper_id, question_number), assignment, {}, CLASSIFIER_VERSION)
+        return {"ok": True, "numbers": [], "codes": [], "difficulty": None,
+                "suggestion": assignment["reason"], "errors": [],
+                "assignment": assignment, "elapsed_sec": 0.0}
     if topic_lines is None:
         topic_lines = [f"Topic {n} — {path}"
                        for n, path in build_topic_list()]
@@ -170,9 +206,14 @@ def classify_question(paper_id: int, question_number: str,
         reasoning_tokens=out_det.get("reasoning", 0),
     )
     qid = database.get_question_id(paper_id, question_number)
-    codes = [topic_codes_by_number()[v] for v in parsed["numbers"]]
-    if codes:
-        database.set_question_topics(qid, codes, src="auto")
+    code_map = topic_codes_by_number()
+    codes = [code_map[v] for v in parsed["numbers"]]
+    assignment = select_primary(codes)
+    # A malformed/partial reply cannot safely determine the latest concept.
+    if parsed["errors"]:
+        assignment.update(status="needs_review", primary=None,
+                          reason="; ".join(parsed["errors"]))
+    database.save_topic_classification(qid, assignment, parsed, CLASSIFIER_VERSION)
     # Suggestion is write-only-when-spoken: auto never clears human text.
     # only_fill: a human difficulty grade is never overwritten.
     database.set_question_difficulty(
@@ -180,6 +221,7 @@ def classify_question(paper_id: int, question_number: str,
         topic_suggestion=parsed["suggestion"], only_fill=True,
     )
     return {"ok": True, "numbers": parsed["numbers"], "codes": codes,
+            "assignment": assignment,
             "difficulty": parsed["difficulty"],
             "suggestion": parsed["suggestion"],
             "errors": parsed["errors"], "elapsed_sec": round(elapsed, 1)}

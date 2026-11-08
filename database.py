@@ -101,6 +101,18 @@ CREATE TABLE IF NOT EXISTS question_topics (
 );
 """
 
+SCHEMA_TOPIC_CLASSIFICATIONS = """
+CREATE TABLE IF NOT EXISTS topic_classifications (
+    question_id INTEGER PRIMARY KEY REFERENCES questions(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,
+    schedule_version TEXT NOT NULL,
+    classifier_version TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    details TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 SCHEMA_TOKEN_USAGE = """
 CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,6 +226,7 @@ def init_db(db_path: str | Path | None = None) -> Path:
         conn.execute(SCHEMA_QUESTIONS)
         conn.execute(SCHEMA_TOKEN_USAGE)
         conn.execute(SCHEMA_TOPICS)
+        conn.execute(SCHEMA_TOPIC_CLASSIFICATIONS)
         conn.execute(SCHEMA_QUESTION_TOPICS)
         qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)")}
         if "qtype" not in qcols:
@@ -435,6 +448,38 @@ def resolve_topic(ref: str, db_path: str | Path | None = None) -> str:
     )
 
 
+def save_topic_classification(question_id: int, assignment: dict,
+                              parsed: dict, classifier_version: str) -> None:
+    """Atomically store audit and replace auto tags; human choices win.
+
+    Review cases retain concepts in the audit, with no auto primary searchable.
+    """
+    import json
+    init_db()
+    conn = get_connection()
+    try:
+        with conn:
+            if conn.execute("SELECT 1 FROM question_topics WHERE question_id=? AND src='human'",
+                            (question_id,)).fetchone():
+                return
+            conn.execute("DELETE FROM question_topics WHERE question_id=? AND src='auto'",
+                         (question_id,))
+            if assignment["status"] == "assigned":
+                codes = [assignment["primary"], *assignment["supporting"]]
+                conn.executemany("INSERT INTO question_topics(question_id,topic_code,rank,src) VALUES (?,?,?,'auto')",
+                                 [(question_id, c, rank) for rank, c in enumerate(codes)])
+            conn.execute(
+                "INSERT INTO topic_classifications(question_id,status,schedule_version,classifier_version,reason,details)"
+                " VALUES (?,?,?,?,?,?) ON CONFLICT(question_id) DO UPDATE SET"
+                " status=excluded.status,schedule_version=excluded.schedule_version,"
+                " classifier_version=excluded.classifier_version,reason=excluded.reason,"
+                " details=excluded.details,updated_at=CURRENT_TIMESTAMP",
+                (question_id, assignment["status"], assignment["schedule_version"], classifier_version,
+                 assignment["reason"], json.dumps({"assignment": assignment, "classifier": parsed})))
+    finally:
+        conn.close()
+
+
 def set_question_topics(
     question_id: int, refs: list[str], src: str = "human"
 ) -> int:
@@ -464,6 +509,7 @@ def set_question_topics(
         else:
             conn.execute(
                 "DELETE FROM question_topics WHERE question_id = ?", (question_id,))
+            conn.execute("DELETE FROM topic_classifications WHERE question_id = ?", (question_id,))
         for rank, code in enumerate(codes):
             conn.execute(
                 "INSERT INTO question_topics (question_id, topic_code, rank, src)"

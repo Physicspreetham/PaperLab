@@ -1,6 +1,7 @@
 """Tagging Inbox: questions with zero topic rows (admin)."""
 from __future__ import annotations
 
+import json
 from fastapi import APIRouter, Depends
 
 import database
@@ -16,7 +17,8 @@ def get_inbox():
     try:
         rows = conn.execute(
             "SELECT q.paper_id, q.question_number, q.qtype, q.difficulty,"
-            " q.topic_suggestion FROM questions q"
+            " q.topic_suggestion, c.reason AS classification_reason, c.details AS classification_details FROM questions q"
+            " LEFT JOIN topic_classifications c ON c.question_id = q.id"
             " LEFT JOIN question_topics t ON t.question_id = q.id"
             " WHERE t.question_id IS NULL"
             " ORDER BY q.paper_id, q.id"
@@ -43,7 +45,8 @@ def get_inbox():
             "number": r["question_number"],
             "qtype": r["qtype"] or "unknown",
             "difficulty": r["difficulty"],
-            "suggestion": r["topic_suggestion"],
+            "suggestion": r["classification_reason"] or r["topic_suggestion"],
+            "classification": json.loads(r["classification_details"]) if r["classification_details"] else None,
             "topics": links,
         })
     return {"total": len(items), "items": items}

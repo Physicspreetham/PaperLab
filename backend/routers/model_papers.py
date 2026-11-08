@@ -208,7 +208,7 @@ class Pool:
         out = []
         for r in rows:
             tcodes = topics.get(r["id"], [])
-            if self.scope is not None and not (set(tcodes) & self.scope):
+            if self.scope is not None and (not tcodes or tcodes[0] not in self.scope):
                 continue
             r["topics"] = tcodes
             r["chapter"] = self.chapter.get(tcodes[0], "") if tcodes else ""

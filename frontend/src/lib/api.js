@@ -172,6 +172,7 @@ export const api = {
 	searchQuestions: (filters = {}, { limit = 24, cursor = null } = {}) => {
 		const q = new URLSearchParams();
 		for (const [key, vals] of Object.entries(filters)) {
+			if (key === 'include_supporting') { q.set(key, String(!!vals)); continue; }
 			for (const v of vals ?? []) q.append(key, v);
 		}
 		q.set('limit', limit);
