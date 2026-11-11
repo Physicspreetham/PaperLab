@@ -417,7 +417,9 @@ def extract(cfg, run):
 
 def valid_classification(report):
     # Upstream explicitly permits no matching topic with a new-topic suggestion.
-    return bool(report.get('difficulty') and (report.get('codes') or report.get('suggestion')) and not report.get('errors'))
+    assignment = report.get('assignment') or {}
+    reviewed_gap = assignment.get('status') == 'needs_review' and assignment.get('reason')
+    return bool(report.get('difficulty') and (report.get('codes') or report.get('suggestion') or reviewed_gap) and not report.get('errors'))
 
 
 def reviewed_crops(cfg):
@@ -449,10 +451,13 @@ def reuse_reviewed(cfg, item, pid, number):
 def classify(cfg, run):
     # Execute upstream Node 3 unchanged. No EJEE difficulty/tags enter this stage.
     import database
-    from run_topics import build_topic_list, classify_question
+    import run_topics as topic_runner
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
-    lines = [f'Topic {n} — {p}' for n, p in build_topic_list()]
+    # Newer PaperLab uses an explicit (code,path) catalogue; older upstream
+    # versions construct their numbered reference internally. Never pass
+    # display strings where the current classifier expects code/path tuples.
+    catalog = topic_runner.build_topic_catalog() if hasattr(topic_runner, 'build_topic_catalog') else None
     for item in manifest['items']:
         number = item['number']
         if not progress['questions'].get(number, {}).get('ok'): raise ValueError('Extraction must finish first')
@@ -461,7 +466,7 @@ def classify(cfg, run):
             previous['ok'] = True
             dump(run / 'progress.json', progress)
             continue
-        report = classify_question(manifest['paper_id'], number, lines)
+        report = topic_runner.classify_question(manifest['paper_id'], number, catalog)
         report['ok'] = bool(report.get('ok') and valid_classification(report))
         progress['node3'][number] = report
         dump(run / 'progress.json', progress)

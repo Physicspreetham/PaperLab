@@ -1,5 +1,7 @@
 # EJEE importer contribution: complete change record
 
+**Later local app integration:** [APP_INTEGRATION.md](APP_INTEGRATION.md) records the new archivist import screen, durable background jobs, current Node 3 integration, and dedicated textbook database/reader. The earlier standalone contribution described below did not change app source; this later integration does. It targets the local app's own repository, not the older author-review fork.
+
 This contribution adds `importer_EJEE/` only. It does not change PaperLab's application source, schema, extractor implementation or prompts. Existing unrelated edits in the contributor's working repository are excluded from this pull request.
 
 ## Data model and isolation

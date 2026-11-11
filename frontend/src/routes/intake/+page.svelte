@@ -179,6 +179,7 @@
 
 <h1>Intake &amp; Pipeline</h1>
 <p class="pl-sub">Stage PDFs, verify pairs, then run the extractor. Nothing enters processing until you confirm the pairs.</p>
+<p><a href="/ejee">Import textbook chapters from the EJEE database →</a></p>
 
 {#if !isArchivist}
 	<div class="pl-card">

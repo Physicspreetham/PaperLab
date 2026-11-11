@@ -1,5 +1,7 @@
 # EJEE → PaperLab importer
 
+The local app now also has **EJEE Import** and a separate **Imported textbooks** reader. See [APP_INTEGRATION.md](APP_INTEGRATION.md) for the app workflow, dedicated database/folders, supported mappings and tests. The standalone instructions below remain useful for isolated demos.
+
 Independent data adapter; no PaperLab source modification. See [PLAN.md](PLAN.md) and [UPSTREAM_ANALYSIS.md](UPSTREAM_ANALYSIS.md).
 
 The demo imports **all 18 questions in David Morin, Introduction to Classical Mechanics, Chapter 1: Strategies for solving problems** into `runs/morin-chapter-01/paperlab.db`. The live EJEE database is opened read-only. Production PaperLab data is never targeted. The reference repo and virtual environment are local dependencies, excluded from version control.

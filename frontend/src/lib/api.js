@@ -9,13 +9,14 @@
 const BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '');
 
 async function request(path, options = {}) {
+	const { timeoutMs = 30000, ...fetchOptions } = options;
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), 30000);
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	let res;
 	try {
 		res = await fetch(`${BASE}${path}`, {
 			headers: { 'Content-Type': 'application/json' },
-			...options,
+			...fetchOptions,
 			signal: controller.signal
 		});
 	} catch (e) {
@@ -38,6 +39,14 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+	getEjeeCatalogue: () => request('/ejee/catalogue', { timeoutMs: 60000 }),
+	setEjeeSource: (body) => request('/ejee/source', { method: 'PUT', body: JSON.stringify(body), timeoutMs: 60000 }),
+	getEjeeJobs: () => request('/ejee/jobs'),
+	getEjeeUsage: () => request('/ejee/usage'),
+	getImportedTextbooks: () => request('/ejee/library/papers'),
+	getImportedChapter: (id) => request(`/ejee/library/papers/${id}/questions`),
+	importEjeeChapters: (book_id, chapters) => request('/ejee/jobs', { method: 'POST', body: JSON.stringify({ book_id, chapters }) }),
+	resumeEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
 	health: () => request('/health'),
 
 	listPapers: (params = {}) => {

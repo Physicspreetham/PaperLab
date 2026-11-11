@@ -18,11 +18,12 @@
 		}
 	}
 
-	const section = $derived('/' + ($page.url.pathname.split('/')[1] || 'archive'));
+	const section = $derived($page.url.pathname.startsWith('/ejee/library') ? '/ejee/library' : '/' + ($page.url.pathname.split('/')[1] || 'archive'));
 	const isArchivist = $derived($role === 'archivist');
 
 	const items = $derived([
 		{ href: '/archive', label: 'Archive', icon: 'book' },
+		{ href: '/ejee/library', label: 'Imported textbooks', icon: 'book' },
 		{ href: '/search', label: 'Search Questions', icon: 'search' },
 		{ href: '/cart', label: 'Cart', icon: 'cart' },
 		{ href: '/builder', label: 'Paper Builder', icon: 'builder' },
@@ -30,6 +31,7 @@
 		{ href: '/inbox', label: 'Tagging Inbox', badge: props.inboxCount, admin: true, icon: 'tag' },
 		{ href: '/syllabus', label: 'Syllabus Map', admin: true, icon: 'map' },
 		{ href: '/intake', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
+		{ href: '/ejee', label: 'EJEE Import', admin: true, icon: 'book' },
 		{ href: '/ledger', label: 'Usage Ledger', admin: true, icon: 'ledger' }
 	]);
 
