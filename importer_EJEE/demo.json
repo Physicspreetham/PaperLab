@@ -1,0 +1,12 @@
+{
+  "source_db": "C:/EJEE-data/ejee.db",
+  "asset_root": "C:/EJEE-data/uploads",
+  "book_source": "David Morin · Introduction to Classical Mechanics",
+  "group_pattern": "^morin-(?P<chapter>\\d+)\\.(?P<number>\\d+)$",
+  "chapter": "1",
+  "chapter_title": "Strategies for solving problems",
+  "original_pdf": "C:/EJEE-data/context/David morin problem and solutions.pdf",
+  "run_dir": "runs/morin-chapter-01",
+  "max_turns_per_question": 36
+  ,"reviewed_crops": "reviewed_crops_demo.json"
+}

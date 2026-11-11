@@ -21,10 +21,7 @@ import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
 import directory_manager
 from app.pairing import relocate_managed_files
-from graph import extractor_app, initial_state, phase1_app
 from preflight import preflight_register
-from run_extractor import get_coverage
-from tools_extractor import reset_assist_attempts
 
 
 def _wipe_paper(paper_id: int) -> None:
@@ -117,6 +114,12 @@ def run_pipeline(paper_id: int, force: bool = False,
     Raises ValueError if the paper is unknown or already done (without force).
     Any mid-run failure marks the paper failed with the error recorded.
     """
+    # Archive browsing and token summaries do not need the AI runtime.
+    # Load its optional native dependencies only when extraction is requested.
+    from graph import extractor_app, initial_state, phase1_app
+    from run_extractor import get_coverage
+    from tools_extractor import reset_assist_attempts
+
     row = database.get_paper(paper_id)
     if row is None:
         raise ValueError(f"paper_id {paper_id} does not exist")
