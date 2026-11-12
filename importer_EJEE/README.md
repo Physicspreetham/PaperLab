@@ -1,6 +1,6 @@
 # EJEE → PaperLab importer
 
-The local app now also has **EJEE Import** and a separate **Imported textbooks** reader. See [APP_INTEGRATION.md](APP_INTEGRATION.md) for the app workflow, dedicated database/folders, supported mappings and tests. The standalone instructions below remain useful for isolated demos.
+The local app now also has **EJEE Import** and a separate **EJEE collections** reader. See [APP_INTEGRATION.md](APP_INTEGRATION.md) for the app workflow, dedicated database/folders, selective filters, optional chapter mappings and tests. The standalone instructions below remain useful for isolated demos.
 
 Independent data adapter; no PaperLab source modification. See [PLAN.md](PLAN.md) and [UPSTREAM_ANALYSIS.md](UPSTREAM_ANALYSIS.md).
 
@@ -27,7 +27,7 @@ The existing parent `.env` supplies `META_API_KEY` in memory. No new API key is 
 
 To review, install frontend packages in `reference/PaperLab/frontend` with `npm install`, then run `Start-Review.ps1` and open http://127.0.0.1:5183/archive. The API on 8011 and frontend on 5183 are separate from the main desktop app. `serve.py` sets the isolated DB, Outputs and data environment before importing upstream modules. `vite.review.config.mjs` points only this review frontend at its API, without modifying upstream files.
 
-Additional textbooks need an explicit adapter config and validated group/chapter numbering. Unsupported part roles or missing body locators stop preparation rather than silently losing data. Existing diagram coordinates are not assumed from generic print-layout rectangles. The first demo is a review artifact; bulk/production import is a subsequent operation after review.
+The app supports selective question imports from any eligible source without a chapter adapter. Only the standalone complete-textbook-chapter mode needs an explicit adapter config and validated group/chapter numbering. Unsupported part roles or missing body locators stop preparation rather than silently losing data. Existing diagram coordinates are not assumed from generic print-layout rectangles. The first demo is a review artifact; bulk/production import is a subsequent operation after review.
 
 `pack` preserves printed book labels in TeX/provenance while using chapter-local numeric IDs in PaperLab, so its unchanged reader sorts correctly. It also encodes printed heading stars as math symbols to avoid the native Markdown bridge displaying raw emphasis markers. Every change is recorded in `data_normalizations.json`.
 

@@ -40,6 +40,9 @@ async function request(path, options = {}) {
 
 export const api = {
 	getEjeeCatalogue: () => request('/ejee/catalogue', { timeoutMs: 60000 }),
+	getEjeeFilters: () => request('/ejee/filters', { timeoutMs: 60000 }),
+	searchEjeeQuestions: (body) => request('/ejee/questions/search', { method:'POST', body:JSON.stringify(body), timeoutMs:60000 }),
+	importEjeeSelection: (body) => request('/ejee/selections', { method:'POST', body:JSON.stringify(body), timeoutMs:60000 }),
 	setEjeeSource: (body) => request('/ejee/source', { method: 'PUT', body: JSON.stringify(body), timeoutMs: 60000 }),
 	getEjeeJobs: () => request('/ejee/jobs'),
 	getEjeeUsage: () => request('/ejee/usage'),

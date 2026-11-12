@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
+	import EjeeSelection from '$lib/components/EjeeSelection.svelte';
 	import { role, loginOpen } from '$lib/stores.js';
 	const admin = $derived($role === 'archivist');
 	let catalogue = $state(null);
@@ -18,7 +19,7 @@
 	const book = $derived(catalogue?.books?.find(b => b.id === bookId));
 	const phases = {queued:'Queued', preparing:'Reading mapped source images', converting:'Converting questions and solutions',
 		diagrams:'Exporting diagram PNGs', formatting:'Checking display format', syllabus:'Loading current syllabus',
-		classifying:'Running fresh topic classification', verifying:'Verifying chapter', publishing:'Adding to textbook library', done:'Complete'};
+		classifying:'Running fresh topic classification', verifying:'Verifying collection', publishing:'Adding to EJEE library', done:'Complete'};
 
 	async function refreshCatalogue() {
 		const result = await api.getEjeeCatalogue();
@@ -33,7 +34,7 @@
 		try {
 			catalogue = await api.setEjeeSource({source_db:sourceDb, asset_root:assetRoot});
 			bookId = catalogue.books[0]?.id || ''; selected = []; sourceOpen = false;
-			message = 'EJEE source connected. Choose a textbook and chapters below.';
+			message = 'EJEE source connected. Filter and select questions below.';
 		} catch(e) { error = e.message; } finally { loading = false; }
 	}
 	async function refreshJobs() {
@@ -63,7 +64,7 @@
 		let active = true, timer;
 		(async () => {
 			loading = true;
-			try { await refreshCatalogue(); await refreshJobs(); }
+			try { await refreshCatalogue(); await refreshJobs(); if(active) error = ''; }
 			catch(e) { if(active) error = e.message; }
 			finally { if(active) loading = false; }
 		})();
@@ -75,12 +76,12 @@
 </script>
 
 <svelte:head><title>EJEE Import - PaperLab</title></svelte:head>
-<h1>EJEE textbook import</h1>
-<p><a class="pl-btn" href="/ejee/library">Open imported textbooks →</a></p>
-<p class="pl-sub">Choose chapters from your existing EJEE library. Questions, mapped solutions and diagrams are saved in a separate textbook database and folder.</p>
+<h1>EJEE question import</h1>
+<p><a class="pl-btn" href="/ejee/library">Open EJEE collections →</a></p>
+<p class="pl-sub">Filter your EJEE database and process only the questions you select. Named collections, mapped solutions and diagrams use a separate database and folder.</p>
 
 {#if !admin}
-	<div class="pl-card"><p>Log in as archivist to connect your EJEE database and import chapters.</p>
+	<div class="pl-card"><p>Log in as archivist to connect your EJEE database and import selected questions.</p>
 		<button class="pl-btn pl-btn-primary" onclick={() => loginOpen.set(true)}>Archivist login</button></div>
 {:else}
 	{#if error}<div class="pl-error" role="alert">{error}</div>{/if}
@@ -98,7 +99,11 @@
 	</section>
 	{#if loading && !catalogue}<p role="status">Reading EJEE catalogue…</p>{/if}
 	{#if catalogue?.connected}
-		<section class="pl-card">
+		{#key catalogue.settings.source_db + '|' + catalogue.settings.asset_root}
+			<EjeeSelection aiReady={catalogue.ai_ready} onQueued={refreshJobs} />
+		{/key}
+		<details class="pl-card"><summary>Optional: import complete mapped textbook chapters</summary>
+		<section>
 			<h2>Choose chapters</h2>
 			<label>Textbook<select class="pl-input" bind:value={bookId} onchange={() => selected = []}>
 				{#each catalogue.books as b}<option value={b.id}>{b.source}</option>{/each}
@@ -121,17 +126,12 @@
 				<button class="pl-btn pl-btn-primary" disabled={!selected.length || selected.length > 20 || starting || !catalogue.ai_ready} onclick={start}>{starting ? 'Queuing…' : `Import ${selected.length || ''} selected chapter${selected.length === 1 ? '' : 's'}`}</button>
 			{/if}
 		</section>
-		{#if catalogue.unsupported.length}
-			<details class="pl-card"><summary>Other sources: {catalogue.unsupported.length} need a chapter mapping</summary>
-				<p class="hint">These sources have no configured textbook numbering adapter. They will not be grouped into guessed chapters.</p>
-				<ul>{#each catalogue.unsupported as b}<li>{b.source} ({b.question_parts} question parts)</li>{/each}</ul>
-			</details>
-		{/if}
+		</details>
 	{/if}
 	<section class="pl-card">
 		<h2>Import progress</h2>
-		{#if usage}<p class="hint">Textbook imports only: ${usage.total_usd.toFixed(4)} estimated API cost · recorded separately from question-paper processing.</p>{/if}
-		{#if !jobs.length}<p>No chapter imports started from this app yet.</p>{/if}
+		{#if usage}<p class="hint">EJEE imports only: ${usage.total_usd.toFixed(4)} estimated API cost · recorded separately from question-paper processing.</p>{/if}
+		{#if !jobs.length}<p>No EJEE imports started from this app yet.</p>{/if}
 		{#each jobs as job (job.id)}
 			<article class="job">
 				<div class="row"><div><strong>{job.chapter}</strong><small>{job.book}</small></div><span class="badge">{job.status}</span></div>
@@ -139,8 +139,8 @@
 				<p class="hint">Estimated API usage: ${(job.estimated_cost_usd || 0).toFixed(4)}</p>
 				<progress max={job.total * 2 || 1} value={(job.converted || 0)+(job.classified || 0)} aria-label={`${job.chapter} progress`}></progress>
 				{#if job.error}<p class="pl-error">{job.error}</p>{/if}
-				{#if ['failed','interrupted'].includes(job.status)}<button class="pl-btn" onclick={() => resume(job.id)}>Resume chapter</button>{/if}
-				{#if job.status === 'done' && job.paper_id}<a class="pl-btn" href={`/ejee/library/${job.paper_id}`}>Open imported chapter →</a>{/if}
+				{#if ['failed','interrupted'].includes(job.status)}<button class="pl-btn" onclick={() => resume(job.id)}>Resume import</button>{/if}
+				{#if job.status === 'done' && job.paper_id}<a class="pl-btn" href={`/ejee/library/${job.paper_id}`}>Open imported collection →</a>{/if}
 			</article>
 		{/each}
 	</section>

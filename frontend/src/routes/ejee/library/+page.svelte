@@ -10,21 +10,21 @@
 	});
 </script>
 
-<svelte:head><title>Imported textbooks - PaperLab</title></svelte:head>
-<h1>Imported textbooks</h1>
-<p class="pl-sub">EJEE textbook chapters, kept in their own library. These are separate from the question-paper Archive.</p>
-<p><a class="pl-btn pl-btn-primary" href="/ejee">Import chapters from EJEE →</a></p>
-{#if loading}<p role="status">Loading textbook library…</p>{/if}
+<svelte:head><title>EJEE collections - PaperLab</title></svelte:head>
+<h1>EJEE collections</h1>
+<p class="pl-sub">Selected EJEE question collections and textbook chapters, kept in their own library. These are separate from the question-paper Archive.</p>
+<p><a class="pl-btn pl-btn-primary" href="/ejee">Select questions from EJEE →</a></p>
+{#if loading}<p role="status">Loading EJEE collections…</p>{/if}
 {#if error}<p class="pl-error" role="alert">{error}</p>{/if}
 {#if !loading && !error && !papers.length}
-	<div class="pl-card empty"><h2>No imported chapters yet</h2><p>Choose a book and chapter in EJEE Import. Completed imports will appear here.</p></div>
+	<div class="pl-card empty"><h2>No imported collections yet</h2><p>Filter and select questions in EJEE Import. Completed imports will appear here.</p></div>
 {/if}
 {#each books as book}
 	<section class="pl-card book"><h2>{book}</h2>
 		{#each papers.filter(p => p.book === book) as paper (paper.id)}
 			<a class="chapter" href={`/ejee/library/${paper.id}`}>
-				<strong>{paper.title?.replace(`${book} — `,'') || 'Textbook chapter'}</strong>
-				<span>{paper.questions} questions · Open chapter →</span>
+				<strong>{paper.title?.replace(`${book} — `,'') || 'EJEE collection'}</strong>
+				<span>{paper.questions} questions · Open collection →</span>
 			</a>
 		{/each}
 	</section>

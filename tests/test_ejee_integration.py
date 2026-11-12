@@ -1,5 +1,6 @@
 """App imports must stay out of the regular question-paper database/files."""
 from pathlib import Path
+import json
 import sqlite3
 
 from fastapi import FastAPI
@@ -33,6 +34,9 @@ def test_import_endpoints_require_archivist_access(ejee_app):
     assert client.get('/api/ejee/catalogue').status_code==401
     assert client.post('/api/ejee/jobs',json={'book_id':'morin','chapters':['1']}).status_code==401
     assert client.put('/api/ejee/source',json={'source_db':'x','asset_root':'y'}).status_code==401
+    assert client.get('/api/ejee/filters').status_code==401
+    assert client.post('/api/ejee/questions/search',json={}).status_code==401
+    assert client.get('/api/ejee/questions/67760/preview').status_code==401
 
 
 def test_empty_regular_database_still_gets_separate_textbook_syllabus(ejee_app,tmp_db):
@@ -83,3 +87,29 @@ def test_imported_figure_paths_do_not_read_normal_archive(ejee_app,tmp_path):
     assert client.get('/api/ejee/library/papers/1/questions/1/figures/qfig1.png').content==b'textbook figure'
     assert client.get('/api/ejee/library/papers/1/questions/1/figures/secret.txt').status_code==400
     assert client.get('/api/ejee/library/papers/999/questions').status_code==404
+
+
+def test_selective_import_freezes_only_selection_in_separate_store(ejee_app,tmp_db,monkeypatch):
+    ejee_app.dependency_overrides[require_admin]=lambda:True
+    sample=Path(__file__).resolve().parents[1]/'importer_EJEE/sample_data'
+    client=TestClient(ejee_app);captured=[]
+    monkeypatch.setattr(app_service,'launch',lambda jid,env:captured.append(jid))
+    assert client.put('/api/ejee/source',json={'source_db':str(sample/'ejee_sample.db'),'asset_root':str(sample/'source_assets')}).status_code==200
+    facets=client.get('/api/ejee/filters').json()
+    cards=client.post('/api/ejee/questions/search',json={'filters':{'qtype':'Subjective'},'limit':2}).json()
+    assert len(cards['items'])==2 and cards['items'][0]['ready']
+    assert client.get('/api/ejee/questions/67760/preview').headers['content-type']=='image/png'
+    body={'name':'My selected problems','resource_ids':[67760,67763],'source_token':facets['source_token']}
+    first=client.post('/api/ejee/selections',json=body)
+    assert first.status_code==202,first.text
+    job=first.json();folder=app_service.WEB/job['id']
+    cfg=json.loads((folder/'config.json').read_text())
+    frozen=json.loads((folder/'selection.json').read_text())
+    assert cfg['collection_name']=='My selected problems' and cfg['group_pattern']==''
+    assert len(frozen['items'])==job['total']==2
+    assert [r['id'] for item in frozen['items'] for r in item['question_rows']]==[67760,67763]
+    assert Path(job['target_db'])==library_store.store()['db']!=tmp_db
+    assert client.post('/api/ejee/selections',json=body).json()['id']==job['id']
+    assert len(captured)==1
+    assert client.post('/api/ejee/selections',json={**body,'source_token':'0'*64}).status_code==400
+    with sqlite3.connect(tmp_db) as c:assert c.execute('SELECT count(*) FROM papers').fetchone()[0]==0

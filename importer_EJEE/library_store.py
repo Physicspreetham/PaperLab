@@ -1,5 +1,6 @@
 """Dedicated textbook database and files; never rebind the app's global DB."""
 import os
+import json
 from pathlib import Path
 import sqlite3
 from threading import RLock
@@ -46,13 +47,20 @@ def questions(paper_id):
     from backend.segments import tex_segments
     with connect() as c:
         paper=c.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
-        if not paper:raise FileNotFoundError('Imported textbook chapter not found')
+        if not paper:raise FileNotFoundError('Imported EJEE collection not found')
+        manifest_path=store()['data']/'archive'/'ejee'/str(paper_id)/'import-manifest.json'
+        provenance={}
+        if manifest_path.exists():
+            manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+            provenance={item['number']:item for item in manifest['items']}
         rows=c.execute('SELECT * FROM questions WHERE paper_id=?',(paper_id,)).fetchall()
         topics={r['code']:dict(r) for r in c.execute('SELECT * FROM topics')}
         result=[]
         for row in sorted(rows,key=lambda r:(0,int(r['question_number'])) if r['question_number'].isdigit() else (1,r['question_number'])):
             folder=store()['outputs']/str(paper_id)/row['question_number']
             entry={'number':row['question_number'],'qtype':row['qtype'],'difficulty':row['difficulty'], 'suggestion':row['topic_suggestion'],'topics':[]}
+            original=provenance.get(row['question_number'],{}).get('question_rows',[])
+            entry['source']=original[0]['source'] if original else paper['source_institute']
             for code,rank in c.execute('SELECT topic_code,rank FROM question_topics WHERE question_id=? ORDER BY rank',(row['id'],)):
                 parts=[];seen=set();cur=code
                 while cur in topics and cur not in seen:

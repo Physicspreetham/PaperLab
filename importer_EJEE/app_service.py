@@ -264,3 +264,33 @@ def resume_job(job_id, target_db, environment):
         write_json(WEB / job_id / 'state.json', state)
         launch(job_id, environment)
         return state
+
+
+def start_selection(name, resource_ids, source_token, filters, target_db, target_outputs, target_data, environment):
+    from importer_EJEE import selection
+    name=name.strip()
+    if not name or len(name)>180:raise ValueError('Enter a collection name (up to 180 characters).')
+    with _lock:
+        if selection.source_token()!=source_token:
+            raise ValueError('The connected EJEE source changed. Refresh the filters before importing.')
+        selected=selection.snapshot(resource_ids)
+        key=hashlib.sha256(('selection:'+selected['fingerprint']).encode()).hexdigest()
+        imported=completed_imports(target_db)
+        if key in imported:return {'status':'done','paper_id':imported[key],'already_imported':True}
+        existing=next((j for j in list_jobs() if j['source_key']==key and j['target_db']==str(target_db) and j['status']!='done'),None)
+        if existing:return existing
+        sources=list(dict.fromkeys(r['source'] or 'Unspecified source' for item in selected['items'] for r in item['question_rows']))
+        job_id=uuid4().hex;folder=WEB/job_id
+        write_json(folder/'selection.json',selected)
+        cfg={**settings(),'selection_snapshot':str(folder/'selection.json'),'collection_name':name,
+             'selection_filters':filters,'book_source':sources[0] if len(sources)==1 else 'Mixed EJEE sources',
+             'group_pattern':'','chapter':'selection','chapter_title':name,
+             'run_dir':folder.relative_to(ROOT).as_posix(),'max_turns_per_question':36,
+             'target_db':str(target_db),'source_key':key}
+        write_json(folder/'config.json',cfg)
+        state={'id':job_id,'source_key':key,'book':cfg['book_source'],'chapter':name,'total':len(selected['items']),
+               'status':'queued','phase':'queued','created_at':time.time(),'target_db':str(target_db),
+               'target_outputs':str(target_outputs),'target_data':str(target_data),'paper_id':None,'error':None,
+               'kind':'selection','selected_resource_ids':selected['selected_resource_ids']}
+        write_json(folder/'state.json',state);launch(job_id,environment)
+        return state

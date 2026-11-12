@@ -23,7 +23,7 @@
 
 	const items = $derived([
 		{ href: '/archive', label: 'Archive', icon: 'book' },
-		{ href: '/ejee/library', label: 'Imported textbooks', icon: 'book' },
+		{ href: '/ejee/library', label: 'EJEE collections', icon: 'book' },
 		{ href: '/search', label: 'Search Questions', icon: 'search' },
 		{ href: '/cart', label: 'Cart', icon: 'cart' },
 		{ href: '/builder', label: 'Paper Builder', icon: 'builder' },

@@ -53,3 +53,13 @@ Earlier local work also repaired the contributor's main app startup by deferring
 ## Rendering compatibility correction
 
 Normalize plain-TeX equation labels (`\eqno(1.21)`) into browser-supported `\tag{1.21}`. Preserve literal program operators, comments and line order by converting verbatim blocks to monospace math arrays: the unchanged native renderer otherwise strips the verbatim wrapper and Markdown merges/italicizes code. Apply normalization both before native submission and during packing; update existing demo and bundled sample files. No application-source edits or additional AI calls are required. Regression coverage exercises the actual upstream TeX/HTML bridge, and 307 rendered math segments pass KaTeX with throwOnError enabled.
+
+
+## Selective EJEE question collections (2026-11-12)
+
+- Added the EJEE source/taxonomy/Model/level/section/exam/year/status/favourite/altered/text filters, question previews, persistent selection basket and named-collection import. Chapter adapters are optional.
+- Freeze explicit resource IDs and attach only their exact source/group solutions; validate crops/assets and ambiguous groups before paid conversion. Preserve all selected resource columns and ancestry for provenance.
+- Reused native Node 2 conversion/diagram tools and fresh local Node 3; sequential collection question IDs need no chapter regex. Retained the separate library DB, file tree and usage ledger.
+- Reader displays per-question source for mixed-source collections. Kept full mapped chapter import in a collapsed optional panel.
+- Pinned ormsgpack 1.10.0 in the isolated runtime after Windows blocked the newer wheel. No security policy was changed.
+- Validation: 29 tests and production frontend build passed. One real unmapped-source question/solution was converted and freshly classified in an isolated test database.

@@ -17,12 +17,12 @@
 	});
 </script>
 
-<svelte:head><title>{paper?.title || 'Imported chapter'} - PaperLab</title></svelte:head>
-<a href="/ejee/library">← Imported textbooks</a>
-{#if loading}<p role="status">Loading chapter…</p>{/if}
+<svelte:head><title>{paper?.title || 'Imported collection'} - PaperLab</title></svelte:head>
+<a href="/ejee/library">← EJEE collections</a>
+{#if loading}<p role="status">Loading collection…</p>{/if}
 {#if error}<p class="pl-error" role="alert">{error}</p>{/if}
 {#if paper}
-	<h1>{paper.title}</h1><p class="pl-sub">Textbook library · {questions.length} questions · {paper.book}</p>
+	<h1>{paper.title}</h1><p class="pl-sub">EJEE library · {questions.length} questions · {paper.book}</p>
 	{#if current}
 		<div class="navigation">
 			<button class="pl-btn" disabled={index <= 0} onclick={() => move(-1)}>← Previous</button>
@@ -30,7 +30,8 @@
 			<button class="pl-btn" disabled={index >= questions.length - 1} onclick={() => move(1)}>Next →</button>
 		</div>
 		<article class="pl-card question">
-			<h2>Question {current.number}</h2><p class="meta">{qtypeLabel(current.qtype)} · {current.difficulty || 'Needs review'}</p>
+			<h2>Question {current.number}</h2>
+			{#if current.source}<p class="meta">Source: {current.source}</p>{/if}<p class="meta">{qtypeLabel(current.qtype)} · {current.difficulty || 'Needs review'}</p>
 			{#if current.topics.length}<details><summary>Topics</summary><ul>{#each current.topics as topic}<li>{topic.path}</li>{/each}</ul></details>{/if}
 			{#if current.suggestion}<p class="hint">Topic review: {current.suggestion}</p>{/if}
 			<Segments segments={current.question} />

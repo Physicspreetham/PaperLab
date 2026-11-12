@@ -1,7 +1,7 @@
 """Archivist-only EJEE database import UI endpoints."""
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,7 @@ import directory_manager
 from backend.deps import require_admin
 from importer_EJEE import app_service as service
 from importer_EJEE import library_store as library
+from importer_EJEE import selection
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 library_router = APIRouter()
@@ -31,6 +32,48 @@ class SourceBody(BaseModel):
 class ImportBody(BaseModel):
     book_id: str
     chapters: list[str] = Field(min_length=1, max_length=20)
+
+
+class SearchBody(BaseModel):
+    filters: dict = Field(default_factory=dict)
+    offset: int = Field(default=0,ge=0)
+    limit: int = Field(default=30,ge=1,le=100)
+
+
+class SelectionBody(BaseModel):
+    name: str = Field(min_length=1,max_length=180)
+    resource_ids: list[int] = Field(min_length=1,max_length=selection.MAX_SELECTION)
+    source_token: str = Field(pattern=r'^[a-f0-9]{64}$')
+    filters: dict = Field(default_factory=dict)
+
+
+@router.get('/filters')
+def filters():
+    try:return selection.facets()
+    except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
+
+
+@router.post('/questions/search')
+def search_questions(body: SearchBody):
+    try:return selection.search(body.filters,body.offset,body.limit)
+    except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
+
+
+@router.get('/questions/{resource_id}/preview')
+def question_preview(resource_id: int):
+    try:return Response(selection.preview(resource_id),media_type='image/png')
+    except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
+
+
+@router.post('/selections',status_code=202)
+def import_selection(body: SelectionBody):
+    if not config.LLM_API_KEY or 'paste-your-key' in config.LLM_API_KEY:
+        raise HTTPException(400,'Configure the PaperLab Meta API key before importing.')
+    try:
+        target=library.store()
+        return service.start_selection(body.name,body.resource_ids,body.source_token,body.filters,
+            target['db'],target['outputs'],target['data'],environment())
+    except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
 
 
 def fail(exc):

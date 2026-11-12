@@ -46,7 +46,7 @@ def source_connect(path):
 def load_config(path):
     path = Path(path).resolve()
     cfg = json.loads(path.read_text(encoding='utf-8'))
-    for key in ('source_db', 'asset_root', 'original_pdf'):
+    for key in ('source_db', 'asset_root', 'original_pdf', 'selection_snapshot'):
         if cfg.get(key) and not Path(cfg[key]).is_absolute():
             cfg[key] = str((path.parent / cfg[key]).resolve())
     run = (ROOT / cfg['run_dir']).resolve()
@@ -160,42 +160,48 @@ def prepare(cfg, run):
     import database
     if (run / 'manifest.json').exists():
         raise ValueError('Run already prepared; use extract/classify to resume, or choose a new run_dir')
-    pattern = re.compile(cfg['group_pattern'])
-    with source_connect(cfg['source_db']) as c:
-        groups = defaultdict(list)
-        for row in c.execute('SELECT * FROM resources WHERE source=? ORDER BY position,id', (cfg['book_source'],)):
-            row = dict(row)
-            m = pattern.fullmatch(row['grp'] or '')
-            if m and m['chapter'] == str(cfg['chapter']) and (not cfg.get('groups') or row['grp'] in cfg['groups']):
-                groups[row['grp']].append(row)
-        if not groups:
-            raise ValueError('No resources match the configured source and chapter')
-        nodes = {r['id']: dict(r) for r in c.execute('SELECT * FROM nodes')}
-        items = []
-        for grp, rows in sorted(groups.items(), key=lambda pair: int(pattern.fullmatch(pair[0])['number'])):
-            if any(r['part'] not in ('q', 'sol') for r in rows):
-                raise ValueError(f'Unsupported part in {grp}; explicit adapter required')
-            qrows = sorted([r for r in rows if r['part'] == 'q'], key=part_order)
-            srows = sorted([r for r in rows if r['part'] == 'sol'], key=part_order)
-            if not qrows:
-                raise ValueError(f'Orphan solution group {grp}')
-            if len(qrows) > 1 and not all(re.search(r'\(\d+/\d+\)', r['title']) for r in qrows):
-                raise ValueError(f'Ambiguous multiple question rows in {grp}')
-            rid = [r['id'] for r in rows]
-            placeholders = ','.join('?' for _ in rid)
-            crops = [dict(r) for r in c.execute(f'SELECT * FROM resource_crops WHERE resource_id IN ({placeholders})', rid)]
-            transcripts = [dict(r) for r in c.execute(f'SELECT * FROM resource_transcripts WHERE resource_id IN ({placeholders})', rid)]
-            ancestry = {}
-            for r in rows:
-                lineage, n, seen = [], r['topic_id'], set()
-                while n in nodes and n not in seen:
-                    seen.add(n); lineage.append(nodes[n]); n = nodes[n]['parent_id']
-                ancestry[str(r['id'])] = lineage
-            items.append({'group': grp, 'number': str(int(pattern.fullmatch(grp)['number'])),
-                          'source_number': f'{cfg["chapter"]}.{pattern.fullmatch(grp)["number"]}',
-                          'question_rows': qrows, 'solution_rows': srows, 'original_ancestry': ancestry,
-                          'resource_crops': crops, 'resource_transcripts': transcripts,
-                          'question_pages': [], 'solution_pages': []})
+    if cfg.get('selection_snapshot'):
+        snapshot = json.loads(Path(cfg['selection_snapshot']).read_text(encoding='utf-8'))
+        items = snapshot['items']
+        if not items or any(not item['question_rows'] for item in items):
+            raise ValueError('Selected question snapshot is empty or invalid')
+    else:
+        pattern = re.compile(cfg['group_pattern'])
+        with source_connect(cfg['source_db']) as c:
+            groups = defaultdict(list)
+            for row in c.execute('SELECT * FROM resources WHERE source=? ORDER BY position,id', (cfg['book_source'],)):
+                row = dict(row)
+                m = pattern.fullmatch(row['grp'] or '')
+                if m and m['chapter'] == str(cfg['chapter']) and (not cfg.get('groups') or row['grp'] in cfg['groups']):
+                    groups[row['grp']].append(row)
+            if not groups:
+                raise ValueError('No resources match the configured source and chapter')
+            nodes = {r['id']: dict(r) for r in c.execute('SELECT * FROM nodes')}
+            items = []
+            for grp, rows in sorted(groups.items(), key=lambda pair: int(pattern.fullmatch(pair[0])['number'])):
+                if any(r['part'] not in ('q', 'sol') for r in rows):
+                    raise ValueError(f'Unsupported part in {grp}; explicit adapter required')
+                qrows = sorted([r for r in rows if r['part'] == 'q'], key=part_order)
+                srows = sorted([r for r in rows if r['part'] == 'sol'], key=part_order)
+                if not qrows:
+                    raise ValueError(f'Orphan solution group {grp}')
+                if len(qrows) > 1 and not all(re.search(r'\(\d+/\d+\)', r['title']) for r in qrows):
+                    raise ValueError(f'Ambiguous multiple question rows in {grp}')
+                rid = [r['id'] for r in rows]
+                placeholders = ','.join('?' for _ in rid)
+                crops = [dict(r) for r in c.execute(f'SELECT * FROM resource_crops WHERE resource_id IN ({placeholders})', rid)]
+                transcripts = [dict(r) for r in c.execute(f'SELECT * FROM resource_transcripts WHERE resource_id IN ({placeholders})', rid)]
+                ancestry = {}
+                for r in rows:
+                    lineage, n, seen = [], r['topic_id'], set()
+                    while n in nodes and n not in seen:
+                        seen.add(n); lineage.append(nodes[n]); n = nodes[n]['parent_id']
+                    ancestry[str(r['id'])] = lineage
+                items.append({'group': grp, 'number': str(int(pattern.fullmatch(grp)['number'])),
+                              'source_number': f'{cfg["chapter"]}.{pattern.fullmatch(grp)["number"]}',
+                              'question_rows': qrows, 'solution_rows': srows, 'original_ancestry': ancestry,
+                              'resource_crops': crops, 'resource_transcripts': transcripts,
+                              'question_pages': [], 'solution_pages': []})
     run.mkdir(parents=True, exist_ok=True)
     assets = run / 'sources'; assets.mkdir(exist_ok=True)
     qpdf, spdf = fitz.open(), fitz.open()
@@ -217,7 +223,7 @@ def prepare(cfg, run):
     pid = database.register_paper(str(qpath), str(spath) if ns else None)
     with database.get_connection() as c:
         c.execute('UPDATE papers SET paper_name=?,exam_type=?,source_institute=?,q_start=1,q_end=?,s_start=?,s_end=?,status=? WHERE id=?',
-                  (f'{cfg["book_source"]} — Chapter {cfg["chapter"]}: {cfg["chapter_title"]}', 'Textbook', cfg['book_source'], nq, 1 if ns else None, ns or None, 'uploaded', pid))
+                  (cfg.get('collection_name') or f'{cfg["book_source"]} — Chapter {cfg["chapter"]}: {cfg["chapter_title"]}', 'EJEE collection' if cfg.get('selection_snapshot') else 'Textbook', cfg['book_source'], nq, 1 if ns else None, ns or None, 'uploaded', pid))
     commit = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip()
     manifest = {'schema': 'ejee-paperlab-import/1', 'paper_id': pid, 'config': cfg,
                 'upstream_commit': commit, 'question_pdf': str(qpath), 'solution_pdf': str(spath) if ns else None,
@@ -541,7 +547,7 @@ def pack(cfg, run):
     changes = []
     pattern = re.compile(cfg['group_pattern'])
     for item in manifest['items']:
-        old = item['number']; new = str(int(pattern.fullmatch(item['group'])['number']))
+        old = item['number']; new = old if cfg.get('selection_snapshot') else str(int(pattern.fullmatch(item['group'])['number']))
         item.setdefault('source_number', old)
         qdir = directory_manager.get_question_dir(manifest['paper_id'], old)
         if old != new:

@@ -2,6 +2,7 @@
 langchain-core==0.3.75
 langchain-openai==0.3.32
 langgraph==0.6.7
+ormsgpack==1.10.0
 langsmith==0.3.45
 xxhash==3.5.0
 pymupdf==1.26.4
