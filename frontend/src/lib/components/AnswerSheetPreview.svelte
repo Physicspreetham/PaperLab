@@ -30,7 +30,7 @@
 		dead = true;
 	});
 
-	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.paperId}:${e.number}`).join(','));
+	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.library || 'archive'}:${e.paperId}:${e.number}`).join(','));
 
 	$effect(() => {
 		void idsKey;
@@ -71,7 +71,7 @@
 			// session cache, so the individual fetches below mostly resolve
 			// without network. Same objects the singles would return (same
 			// backend constructor); bulk failure falls through to singles.
-			const { bulk } = bulkSeedPlan(missing);
+			const { bulk } = bulkSeedPlan(missing.filter(e => e.library !== 'ejee'));
 			if (bulk.length > 0) {
 				await Promise.all(bulk.map(async ({ paperId, numbers }) => {
 					try {
@@ -96,7 +96,7 @@
 	async function fetchOne(e, gen) {
 		try {
 			const d = await withTimeout(
-				getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
+				getQuestionDetail(e.paperId, e.number, e.library), 20000, 'Backend timed out — is it running on port 8000?');
 			if (dead) return;
 			const cur = details[e.blockId];
 			// Only the owning generation writes: superseded runs never
@@ -120,7 +120,7 @@
 			const msg = String(err?.message ?? err);
 			// Evict unconditionally: the cache self-evicts rejections, so
 			// this only affects timeout-abandoned pendings (zombies).
-			try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+			try { dropQuestionDetail(e.paperId, e.number, e.library); } catch { /* ignore */ }
 			details[e.blockId] = { error: msg, attempts: (cur.attempts ?? 0) + 1 };
 		}
 	}
@@ -134,7 +134,7 @@
 		const now = Date.now();
 		for (const e of failed) {
 			const prev = details[e.blockId];
-			try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+			try { dropQuestionDetail(e.paperId, e.number, e.library); } catch { /* ignore */ }
 			details[e.blockId] = { waiting: true, at: now, attempts: prev?.attempts ?? 0, run: myGen };
 		}
 		await pool(failed, 3, async (e) => {
@@ -161,7 +161,7 @@
 		// while waiting and the shared effect leaves it alone.
 		const myGen = ++runGen;
 		const attempts = details[bid]?.attempts ?? 0;
-		try { dropQuestionDetail(entry.paperId, entry.number); } catch { /* ignore */ }
+		try { dropQuestionDetail(entry.paperId, entry.number, entry.library); } catch { /* ignore */ }
 		const mark = (details[bid] = { waiting: true, at: Date.now(), attempts, run: myGen });
 		(async () => {
 			await sleep(backoffDelay(attempts));

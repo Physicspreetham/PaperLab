@@ -38,6 +38,23 @@ The converter keeps unfinished output isolated. The publisher checks question co
 
 ## Resume, duplicates and usage
 
+The app's **Usage Ledger** now has a separate **EJEE Selection Process** section.
+It reads actual recorded input/cached/output/reasoning tokens and API calls,
+with conversion and fresh-classification costs by named collection and phase.
+Published selections are read from the dedicated database; failed/in-progress
+selection workers are included until their source key is published. This avoids
+double counting during publication/resume. Complete-chapter imports and ordinary
+question-paper usage are excluded from this selection section. Display currency
+follows the ledger's existing USD/INR setting. Local crop repairs add no calls.
+
+Processed collection questions support **Add to cart** and **Open cart**. Cart
+snapshots, deduplication, removal, saved drafts and question-detail caches retain
+`library: ejee`; ordinary items without that marker remain compatible. Scoped
+read-only endpoints retrieve the correct question/solution/figure even when a
+normal paper has the same numeric IDs. The marker survives cart-to-builder
+imports and both question/answer sheet previews; bulk archive prefetching never
+seeds EJEE entries. No content is copied into the normal paper database.
+
 - Repeated clicks return the same active job. Completed chapter/source-group sets return the existing chapter instead of paying to convert again.
 - A small sample and a full chapter have different group identities, so importing a sample does not silently mark a larger chapter complete.
 - Failed/interrupted jobs can resume from saved conversions/classifications. A per-worker file lock prevents concurrent reuse of the same run.

@@ -4,17 +4,18 @@
  * component refetching. Failures are NOT cached — retry refetches.
  */
 import { api } from './api.js';
+import { itemKey } from './cartModel.js';
 
 const cache = new Map();
 
-const key = (paperId, number) => `${paperId}::${String(number)}`;
+const key = itemKey;
 
-export function getQuestionDetail(paperId, number) {
-	const k = key(paperId, number);
+export function getQuestionDetail(paperId, number, library) {
+	const k = key(paperId, number, library);
 	if (!cache.has(k)) {
 		cache.set(
 			k,
-			api.getQuestion(paperId, number).catch((e) => {
+			api.getQuestion(paperId, number, library).catch((e) => {
 				cache.delete(k);
 				throw e;
 			})
@@ -29,12 +30,12 @@ export function getQuestionDetail(paperId, number) {
  * bulk prefetch can never clobber fresher data. Failures are never
  * seeded, matching getQuestionDetail semantics.
  */
-export function seedQuestionDetail(paperId, number, data) {
-	const k = key(paperId, number);
+export function seedQuestionDetail(paperId, number, data, library) {
+	const k = key(paperId, number, library);
 	if (!cache.has(k)) cache.set(k, Promise.resolve(data));
 	return cache.get(k);
 }
 
-export function dropQuestionDetail(paperId, number) {
-	cache.delete(key(paperId, number));
+export function dropQuestionDetail(paperId, number, library) {
+	cache.delete(key(paperId, number, library));
 }

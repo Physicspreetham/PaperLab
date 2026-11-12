@@ -4,6 +4,7 @@
 	import { api } from '$lib/api.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
+	import AddToCart from '$lib/components/AddToCart.svelte';
 	let paper = $state(null), questions = $state([]), number = $state(''), loading = $state(true), error = $state('');
 	let showSolution = $state(false);
 	const current = $derived(questions.find(q => q.number === number));
@@ -12,7 +13,9 @@
 	onMount(async () => {
 		try {
 			const result = await api.getImportedChapter($page.params.id);
-			paper = result.paper; questions = result.questions; number = questions[0]?.number || '';
+			paper = result.paper; questions = result.questions;
+			const requested = $page.url.searchParams.get('q');
+			number = questions.some(q => q.number === requested) ? requested : questions[0]?.number || '';
 		} catch(e) { error = e.message; } finally { loading = false; }
 	});
 </script>
@@ -31,6 +34,7 @@
 		</div>
 		<article class="pl-card question">
 			<h2>Question {current.number}</h2>
+			<div class="cart-actions"><AddToCart item={{paperId:Number(paper.id),number:current.number,library:'ejee',qtype:current.qtype,difficulty:current.difficulty,exam:'EJEE collection',institute:current.source || paper.book,preview:`${paper.title} · Question ${current.number}`}} variant="tool" showLabel /><a class="pl-btn" href="/cart">Open cart →</a></div>
 			{#if current.source}<p class="meta">Source: {current.source}</p>{/if}<p class="meta">{qtypeLabel(current.qtype)} · {current.difficulty || 'Needs review'}</p>
 			{#if current.topics.length}<details><summary>Topics</summary><ul>{#each current.topics as topic}<li>{topic.path}</li>{/each}</ul></details>{/if}
 			{#if current.suggestion}<p class="hint">Topic review: {current.suggestion}</p>{/if}
@@ -49,6 +53,7 @@
 	.question { padding:24px; }
 	h2 { margin:0 0 10px; }
 	.meta,.hint { opacity:.7; }
+	.cart-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:12px 0; }
 	.solution { margin-top:22px; padding-top:18px; border-top:1px solid var(--pl-line); }
 	details { margin-bottom:18px; }
 </style>

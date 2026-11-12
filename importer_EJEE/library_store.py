@@ -43,7 +43,14 @@ def papers():
         return [dict(r) for r in c.execute('SELECT p.id,p.paper_name title,p.source_institute book,p.status,count(q.id) questions FROM papers p LEFT JOIN questions q ON q.paper_id=p.id GROUP BY p.id ORDER BY p.source_institute,p.id')]
 
 
-def questions(paper_id):
+def metadata(paper_id):
+    with connect() as c:
+        row=c.execute('SELECT id,paper_name title,source_institute institute,exam_type exam,status FROM papers WHERE id=?',(paper_id,)).fetchone()
+        if not row:raise FileNotFoundError('Imported EJEE collection not found')
+        return dict(row)
+
+
+def questions(paper_id,number=None):
     from backend.segments import tex_segments
     with connect() as c:
         paper=c.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
@@ -53,7 +60,8 @@ def questions(paper_id):
         if manifest_path.exists():
             manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
             provenance={item['number']:item for item in manifest['items']}
-        rows=c.execute('SELECT * FROM questions WHERE paper_id=?',(paper_id,)).fetchall()
+        rows=c.execute('SELECT * FROM questions WHERE paper_id=?'+(' AND question_number=?' if number is not None else ''),
+                       (paper_id,number) if number is not None else (paper_id,)).fetchall()
         topics={r['code']:dict(r) for r in c.execute('SELECT * FROM topics')}
         result=[]
         for row in sorted(rows,key=lambda r:(0,int(r['question_number'])) if r['question_number'].isdigit() else (1,r['question_number'])):

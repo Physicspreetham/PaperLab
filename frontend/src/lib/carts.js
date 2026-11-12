@@ -12,7 +12,7 @@ import {
 	addItem as _add,
 	removeItem as _remove,
 	validateStore,
-	toCartItem
+	toCartItem, itemKey
 } from './cartModel.js';
 
 export const CART_KEY = 'pl-carts-v1';
@@ -154,20 +154,20 @@ export const carts = {
 		});
 		return status;
 	},
-	remove(paperId, number) {
+	remove(paperId, number, library) {
 		let done = false;
 		patchActive((cart) => {
-			const r = _remove(cart, paperId, number);
+			const r = _remove(cart, paperId, number, library);
 			done = r.removed;
 			return r.cart;
 		});
 		return done;
 	},
-	has(paperId, number) {
+	has(paperId, number, library) {
 		let found = false;
 		const unsub = activeCart.subscribe((cart) => {
 			found = !!cart?.items.some(
-				(it) => it.paperId === paperId && String(it.number) === String(number));
+				(it) => itemKey(it.paperId, it.number, it.library) === itemKey(paperId, number, library));
 		});
 		unsub();
 		return found;

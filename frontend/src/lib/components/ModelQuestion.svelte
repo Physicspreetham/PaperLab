@@ -19,7 +19,7 @@
 		loading = true;
 		error = '';
 		try {
-			const [q, p] = await Promise.all([api.getQuestion(item.paperId, item.number), api.getPaper(item.paperId)]);
+			const [q, p] = await Promise.all([api.getQuestion(item.paperId, item.number, item.library), api.getPaper(item.paperId, item.library)]);
 			if (!live) return;
 			question = q;
 			paper = p;
@@ -41,7 +41,7 @@
 	let showSolution = $state(false);
 	let showQImage = $state(false);
 	let imageOk = $state(true);
-	const sourceHref = (action) => `/archive/${encodeURIComponent(item.paperId)}?${new URLSearchParams({ from: 'search', q: String(item.number), action })}`;
+	const sourceHref = (action) => item.library === 'ejee' ? `/ejee/library/${item.paperId}?q=${encodeURIComponent(item.number)}` : `/archive/${encodeURIComponent(item.paperId)}?${new URLSearchParams({ from: 'search', q: String(item.number), action })}`;
 	const renderUrl = () => `/api/papers/${item.paperId}/questions/${encodeURIComponent(item.number)}/render?part=question`;
 
 </script>
@@ -93,7 +93,7 @@
 				{/each}
 			{:else}
 			<button type="button" class="pl-btn" onclick={() => (showSolution = !showSolution)}>{showSolution ? 'Hide solution' : 'Show solution'}</button>
-			<button type="button" class="pl-btn" onclick={() => { showQImage = !showQImage; imageOk = true; }}>{showQImage ? 'Hide compiled image' : 'Render question as image'}</button>
+			{#if item.library !== 'ejee'}<button type="button" class="pl-btn" onclick={() => { showQImage = !showQImage; imageOk = true; }}>{showQImage ? 'Hide compiled image' : 'Render question as image'}</button>{/if}
 			{/if}
 		</div>
 		{#if showQImage}

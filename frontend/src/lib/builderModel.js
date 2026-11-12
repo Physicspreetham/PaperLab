@@ -67,14 +67,15 @@ export function toBlock(src) {
 		id: newBlockId(),
 		paperId,
 		number,
+		...(src.library === 'ejee' ? { library: 'ejee' } : {}),
 		qtype: typeof src.qtype === 'string' && src.qtype ? src.qtype.slice(0, 20) : 'unknown'
 	};
 }
 
-export const blockKey = (paperId, number) => `${paperId}::${String(number)}`;
+export const blockKey = (paperId, number, library) => `${library === 'ejee' ? 'ejee::' : ''}${paperId}::${String(number)}`;
 
 function identitySet(draft) {
-	return new Set(Object.values(draft.blocks ?? {}).map((b) => blockKey(b.paperId, b.number)));
+	return new Set(Object.values(draft.blocks ?? {}).map((b) => blockKey(b.paperId, b.number, b.library)));
 }
 
 function touch(draft) {
@@ -96,7 +97,7 @@ export function importBlocks(draft, items, { allowDupes = false } = {}) {
 	for (const src of items ?? []) {
 		const b = toBlock(src);
 		if (!b) continue;
-		const k = blockKey(b.paperId, b.number);
+		const k = blockKey(b.paperId, b.number, b.library);
 		if (seen.has(k) && !allowDupes) {
 			skipped.push({ paperId: b.paperId, number: b.number });
 			continue;
@@ -445,6 +446,7 @@ function toBlockKeepId(id, b) {
 		id,
 		paperId,
 		number,
+		...(b.library === 'ejee' ? { library: 'ejee' } : {}),
 		qtype: typeof b.qtype === 'string' && b.qtype ? b.qtype.slice(0, 20) : 'unknown'
 	};
 }

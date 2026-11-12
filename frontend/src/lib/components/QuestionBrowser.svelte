@@ -3,6 +3,7 @@
 	import ModelQuestion from '$lib/components/ModelQuestion.svelte';
 	import AddToCart from '$lib/components/AddToCart.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
+	import { itemKey } from '$lib/cartModel.js';
 	let { items = [], tools, mode = 'search', onRemove, hasMore = false, loading = false, onMore, onScroll, initialScroll = 0 } = $props();
 	let browserElement = $state(null);
 	let fullscreen = $state(false);
@@ -10,7 +11,7 @@
 	let pane = $state(null);
 	let active = $state('');
 	const nodes = new Map();
-	const key = (it) => `${it.paperId}::${it.number}`;
+	const key = (it) => itemKey(it.paperId, it.number, it.library);
 	function anchor(node, id) { nodes.set(id, node); return { destroy() { nodes.delete(id); } }; }
 	function jump(it) { active = key(it); nodes.get(active)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 	function scroll() {
@@ -73,7 +74,7 @@
 			{#each items as item (key(item))}
 				<div class="thumbnail" class:active={active === key(item)}>
 					<button type="button" class="open-question" aria-current={active === key(item) ? 'true' : undefined} onclick={() => jump(item)}>
-						<strong>Q{item.number} · Paper {item.paperId}</strong>
+						<strong>Q{item.number} · {item.library === 'ejee' ? 'EJEE collection' : 'Paper'} {item.paperId}</strong>
 						<span class="preview">{item.preview || 'Open question'}</span>
 						{#if item.thumb}<img src={item.thumb} alt={`Question ${item.number} preview`} loading="lazy" />{/if}
 					</button>

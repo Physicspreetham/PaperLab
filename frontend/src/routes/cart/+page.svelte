@@ -42,7 +42,7 @@
 <svelte:head><title>Cart - PaperLab</title></svelte:head>
 
 {#key cart?.id}
-<QuestionBrowser items={cart?.items ?? []} mode="cart" onRemove={(item) => carts.remove(item.paperId, item.number)}>
+<QuestionBrowser items={cart?.items ?? []} mode="cart" onRemove={(item) => carts.remove(item.paperId, item.number, item.library)}>
 {#snippet tools()}
 <h1>Question cart</h1>
 <p class="pl-sub">{cart?.name ?? ''} · {cart?.items.length ?? 0} questions</p>

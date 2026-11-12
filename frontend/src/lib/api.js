@@ -46,6 +46,7 @@ export const api = {
 	setEjeeSource: (body) => request('/ejee/source', { method: 'PUT', body: JSON.stringify(body), timeoutMs: 60000 }),
 	getEjeeJobs: () => request('/ejee/jobs'),
 	getEjeeUsage: () => request('/ejee/usage'),
+	getEjeeSelectionUsage: () => request('/ejee/usage/selection'),
 	getImportedTextbooks: () => request('/ejee/library/papers'),
 	getImportedChapter: (id) => request(`/ejee/library/papers/${id}/questions`),
 	importEjeeChapters: (book_id, chapters) => request('/ejee/jobs', { method: 'POST', body: JSON.stringify({ book_id, chapters }) }),
@@ -58,11 +59,11 @@ export const api = {
 		).toString();
 		return request(`/papers${q ? `?${q}` : ''}`);
 	},
-	getPaper: (id) => request(`/papers/${id}`),
+	getPaper: (id, library) => request(`${library === 'ejee' ? '/ejee/library' : ''}/papers/${id}`),
 	getLibrarySummary: () => request('/papers/summary'),
 	getQuestions: (id) => request(`/papers/${id}/questions`),
-	getQuestion: (paperId, qn) =>
-		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
+	getQuestion: (paperId, qn, library) =>
+		request(`${library === 'ejee' ? '/ejee/library' : ''}/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
 
 	getInbox: () => request('/inbox'),
 	classifyQuestion: (paperId, qn, body) =>
@@ -164,8 +165,6 @@ export const api = {
 	logout: () => request('/auth/logout', { method: 'POST' }),
 	me: () => request('/auth/me'),
 	getMeta: () => request('/papers/meta'),
-	getQuestion: (paperId, qn) =>
-		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
 
 	getTex: (paperId, qn, part) =>
 		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/tex?part=${part}`),

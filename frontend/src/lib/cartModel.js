@@ -42,6 +42,7 @@ export function toCartItem(src) {
 	return {
 		paperId,
 		number,
+		...(src.library === 'ejee' ? { library: 'ejee' } : {}),
 		qtype: cleanStr(src.qtype ?? 'unknown', 20) || 'unknown',
 		difficulty: src.difficulty ?? null,
 		preview: cleanStr(src.preview ?? '', 300),
@@ -53,18 +54,18 @@ export function toCartItem(src) {
 	};
 }
 
-export const itemKey = (paperId, number) => `${paperId}::${String(number)}`;
+export const itemKey = (paperId, number, library) => `${library === 'ejee' ? 'ejee::' : ''}${paperId}::${String(number)}`;
 
-export function findItemIndex(cart, paperId, number) {
-	const k = itemKey(paperId, number);
-	return cart.items.findIndex((it) => itemKey(it.paperId, it.number) === k);
+export function findItemIndex(cart, paperId, number, library) {
+	const k = itemKey(paperId, number, library);
+	return cart.items.findIndex((it) => itemKey(it.paperId, it.number, it.library) === k);
 }
 
 /** Add; returns {cart, added:boolean, reason}. Never mutates input. */
 export function addItem(cart, src) {
 	const item = toCartItem(src);
 	if (!item) return { cart, added: false, reason: 'invalid' };
-	if (findItemIndex(cart, item.paperId, item.number) !== -1)
+	if (findItemIndex(cart, item.paperId, item.number, item.library) !== -1)
 		return { cart, added: false, reason: 'duplicate' };
 	if (cart.items.length >= MAX_ITEMS_PER_CART)
 		return { cart, added: false, reason: 'full' };
@@ -76,8 +77,8 @@ export function addItem(cart, src) {
 }
 
 /** Remove by identity; returns {cart, removed:boolean}. */
-export function removeItem(cart, paperId, number) {
-	const i = findItemIndex(cart, paperId, number);
+export function removeItem(cart, paperId, number, library) {
+	const i = findItemIndex(cart, paperId, number, library);
 	if (i === -1) return { cart, removed: false };
 	const items = cart.items.slice();
 	items.splice(i, 1);
@@ -101,7 +102,7 @@ export function validateStore(raw) {
 		for (const it of items.slice(0, MAX_ITEMS_PER_CART)) {
 			const norm = toCartItem(it);
 			if (!norm) continue;
-			const k = itemKey(norm.paperId, norm.number);
+			const k = itemKey(norm.paperId, norm.number, norm.library);
 			if (seen.has(k)) continue; // drop dupes from corrupt/manual edits
 			seen.add(k);
 			good.push(norm);

@@ -136,6 +136,12 @@ def usage():
     return result
 
 
+@router.get('/usage/selection')
+def selection_usage():
+    from importer_EJEE.usage_ledger import selection_usage
+    return selection_usage()
+
+
 @library_router.get('/papers')
 def library_papers():
     return library.papers()
@@ -144,6 +150,21 @@ def library_papers():
 @library_router.get('/papers/{paper_id}/questions')
 def library_questions(paper_id: int):
     try:return library.questions(paper_id)
+    except (ValueError,OSError) as exc:fail(exc)
+
+
+@library_router.get('/papers/{paper_id}')
+def library_paper(paper_id: int):
+    try:return library.metadata(paper_id)
+    except (ValueError,OSError) as exc:fail(exc)
+
+
+@library_router.get('/papers/{paper_id}/questions/{qn}')
+def library_question(paper_id: int,qn: str):
+    try:
+        items=library.questions(paper_id,qn)['questions']
+        if not items:raise FileNotFoundError('Imported EJEE question not found')
+        return items[0]
     except (ValueError,OSError) as exc:fail(exc)
 
 

@@ -4,6 +4,7 @@
 	import { role } from '$lib/stores.js';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import SegmentedTabs from '$lib/components/SegmentedTabs.svelte';
+	import EjeeUsage from '$lib/components/EjeeUsage.svelte';
 
 	const isArchivist = $derived($role === 'archivist');
 
@@ -230,6 +231,8 @@
 		<p>This area needs archivist access. Use the role switch in the sidebar to log in.</p>
 	</div>
 {:else}
+	<EjeeUsage {currency} {rate} />
+	<h2 class="section-title">Question-paper processing</h2>
 	<button type="button" class="pl-btn" onclick={load}>Refresh metrics</button>
 
 	{#if loading}
@@ -241,7 +244,7 @@
 		</div>
 	{:else if stats}
 		<div class="stats">
-			<StatCard label="Total cost" value={money(stats.totalCost)} />
+			<StatCard label="Question-paper cost" value={money(stats.totalCost)} />
 			<StatCard label="Extraction" value={money(stats.extraction)} />
 			<StatCard label="Tagging" value={money(stats.tagging)} />
 			<StatCard label="Turns" value={stats.turns.toLocaleString('en-US')} />
