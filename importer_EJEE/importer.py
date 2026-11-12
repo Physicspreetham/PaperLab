@@ -337,9 +337,14 @@ def extract_item(manifest, item, cfg, run):
     # Keep its crop algorithms but do not save a 600 dpi upsample of the pixels.
     tools._SAVE_DPI = 200
     selected = [tools.get_page_image, tools.assisted_crop, tools.exact_crop, tools.submit_question, tools.submit_solution]
+    optimized=cfg.get('extractor_mode','mapped-pair')!='legacy-pdf'
+    if optimized:
+        from efficient_extractor import build_tools, INSTRUCTIONS, PROFILE
+        selected=build_tools(tools,manifest,item)
     by_name = {t.name: t for t in selected}
     native = (REPO / 'prompts' / 'extractor_prompt.md').read_text(encoding='utf-8')
     override = (ROOT / 'prompts' / 'mapped_extractor.md').read_text(encoding='utf-8')
+    if optimized:override+='\n\n'+INSTRUCTIONS
     allowed = {manifest['question_pdf']: item['question_pages']}
     if manifest['solution_pdf']: allowed[manifest['solution_pdf']] = item['solution_pages']
     metadata = {'paper_id': pid, 'question_number': number, 'source_label': item['question_rows'][0]['title'],
@@ -358,7 +363,8 @@ def extract_item(manifest, item, cfg, run):
     llm = get_llm().bind_tools(selected, parallel_tool_calls=False)
     saved = set(); t0 = time.time()
     log = run / 'traces' / f'{number}.json'
-    for turn in range(cfg.get('max_turns_per_question', 36)):
+    max_turns=min(cfg.get('max_turns_per_question',36),cfg.get('cost_max_turns_per_question',12)) if optimized else cfg.get('max_turns_per_question',36)
+    for turn in range(max_turns):
         response = invoke_with_retry(llm, messages)
         usage = response.usage_metadata or {}
         database.log_token_usage(pid, 'extractor', input_tokens=usage.get('input_tokens', 0),
@@ -374,6 +380,9 @@ def extract_item(manifest, item, cfg, run):
                     args['latex_content'] = strip_problem_heading(args['latex_content'], source_heading(item))
                 if name in ('submit_question', 'submit_solution'):
                     args['latex_content'] = normalize_rendering(args['latex_content'])
+                if name=='submit_pair':
+                    args['question_latex']=normalize_rendering(strip_problem_heading(args['question_latex'],source_heading(item)))
+                    args['solution_latex']=normalize_rendering(args['solution_latex'])
                 if 'paper_id' in args and args['paper_id'] != pid: raise ValueError('Wrong paper ID')
                 if 'question_number' in args and str(args['question_number']) != number: raise ValueError('Wrong question number')
                 if 'pdf_path' in args:
@@ -387,10 +396,15 @@ def extract_item(manifest, item, cfg, run):
                     result = by_name[name].invoke({'name': name, 'args': args, 'id': call['id'], 'type': 'tool_call'})
                 else:
                     result = by_name[name].invoke(args)
-                if isinstance(result, Command): messages.extend(result.update.get('messages', []))
+                if isinstance(result, Command):
+                    replies=result.update.get('messages', [])
+                    # Raster crop preview below supersedes the PDF tool preview;
+                    # sending both images on every retry wastes vision tokens.
+                    messages.extend([m for m in replies if not isinstance(m,HumanMessage)] if name in ('assisted_crop','exact_crop') else replies)
                 else:
                     messages.append(ToolMessage(content=str(result), tool_call_id=call['id']))
                     if name in ('submit_question', 'submit_solution') and str(result) == 'saved': saved.add(name)
+                    if name=='submit_pair' and str(result)=='saved':saved.update(('submit_question','submit_solution'))
                 if name in ('assisted_crop','exact_crop'):
                     replies=result.update.get('messages',[]) if isinstance(result,Command) else []
                     reply='\n'.join(m.content for m in replies if isinstance(m,ToolMessage) and isinstance(m.content,str)) or str(result)
@@ -407,17 +421,20 @@ def extract_item(manifest, item, cfg, run):
                         reviews=json.loads(review_path.read_text()) if review_path.exists() else {}
                         reviews[args['output_filename']]=review;dump(review_path,reviews)
                         note=('RE-CROP REQUIRED: source ink touches '+', '.join(review['edge_warnings'])+'. Expand those edges to include the complete diagram/labels, or tighten past foreign text. White output padding does not restore missing pixels.' if review['edge_warnings'] else 'Raster edges have clearance. Compare with the full source: exclude statement fragments and include every dimension label.')
-                        messages.append(HumanMessage(content=[{'type':'text','text':args['output_filename']+': '+note},tools.img_block(dest,tools.PAGE_PX)]))
+                        if optimized:
+                            from efficient_extractor import prune_old_preview
+                            messages=[m.model_copy(update={'content':prune_old_preview(m.content,args['output_filename'])}) if isinstance(m,HumanMessage) else m for m in messages]
+                        messages.append(HumanMessage(content=[{'type':'text','text':args['output_filename']+': '+note},tools.img_block(dest,tools.CROP_PX)]))
             except Exception as exc:
                 messages.append(ToolMessage(content=f'Error: {type(exc).__name__}: {exc}', tool_call_id=call['id']))
-        dump(log, {'turns': turn+1, 'elapsed_sec': time.time()-t0, 'messages': [clean_message(m) for m in messages]})
+        dump(log, {'profile':PROFILE if optimized else 'legacy-pdf','turns': turn+1, 'elapsed_sec': time.time()-t0, 'messages': [clean_message(m) for m in messages]})
         if len(saved) == 2:
             errors = validate_item(pid, number, bool(item['solution_rows']))
-            if not errors: return {'ok': True, 'turns': turn+1, 'elapsed_sec': round(time.time()-t0, 2)}
+            if not errors: return {'ok': True, 'profile':PROFILE if optimized else 'legacy-pdf','turns': turn+1, 'elapsed_sec': round(time.time()-t0, 2)}
             messages.append(HumanMessage(content='Completion check failed; correct with same IDs: ' + '; '.join(errors)))
         elif not response.tool_calls:
-            messages.append(HumanMessage(content='Finish this mapped item by calling both submit_question and submit_solution. Do not invent missing solutions.'))
-    raise RuntimeError(f'{number}: turn limit reached; trace saved for review')
+            messages.append(HumanMessage(content='Finish this mapped item with submit_pair.' if optimized else 'Finish this mapped item by calling both submit_question and submit_solution. Do not invent missing solutions.'))
+    raise RuntimeError(f'{number}: {max_turns}-call cost limit reached; trace and usage saved for crop/content review. No incomplete question is published.')
 
 
 def extract(cfg, run):

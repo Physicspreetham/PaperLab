@@ -46,5 +46,17 @@
       887
     ],
     "reason": "Keep full F/P0A and pressure-force labels with complete closing bracket."
+  },
+  {
+    "group": "crunch-F-F__016",
+    "filename": "sfig1.png",
+    "source_body_sha256": "5efeea78b43f6eb05d87745f9036e51060d58c04fd6924f4c2676a66861a1840",
+    "source_pixel_box": [
+      529,
+      447,
+      2128,
+      1298
+    ],
+    "reason": "Reviewed against complete original soap-bubble solution: retain both bubbles, all force arrows, pressure/radius labels and Fig. 1 caption."
   }
 ]

@@ -283,6 +283,7 @@ def start_selection(name, resource_ids, source_token, filters, target_db, target
         job_id=uuid4().hex;folder=WEB/job_id
         write_json(folder/'selection.json',selected)
         cfg={**settings(),'selection_snapshot':str(folder/'selection.json'),'collection_name':name,
+             'extractor_mode':'mapped-pair','cost_max_turns_per_question':12,
              'selection_filters':filters,'book_source':sources[0] if len(sources)==1 else 'Mixed EJEE sources',
              'group_pattern':'','chapter':'selection','chapter_title':name,
              'run_dir':folder.relative_to(ROOT).as_posix(),'max_turns_per_question':36,
