@@ -141,6 +141,15 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 		);
 	} else {
 		firstText.html = firstText.html.replace(LEAD_TEXT_RE, '$1');
+		// Imported EJEE statements intentionally have no printed number.
+		// Give their first paragraph a real list marker so preview, print and
+		// Word all carry the generated number (rather than relying on CSS).
+		if (/^\s*<p\b[^>]*>[\s\S]*?<\/p>/.test(firstText.html)) {
+			firstText.html = firstText.html.replace(/^(\s*)<p\b[^>]*>([\s\S]*?)<\/p>/,
+				(_,space,stem) => `${space}<ol start="${numbers[0]}"><li>${stem}</li></ol>`);
+		} else if (firstText.html.trim()) {
+			firstText.html = `<ol start="${numbers[0]}"><li>${firstText.html}</li></ol>`;
+		}
 	}
 	for (const s of out) {
 		if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);

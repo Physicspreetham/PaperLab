@@ -30,16 +30,16 @@ describe('dressQuestion singles', () => {
 	it('bold II-/B- lead numbers stripped as text', () => {
 		assert.equal(
 			dressQuestion([T('<p><strong>18.</strong> A container.</p>')], { numbers: [7] })[0].html,
-			'<p>A container.</p>');
+			'<ol start="7"><li>A container.</li></ol>');
 		assert.equal(
 			dressQuestion([T('<p>II-1. An ammeter.</p>')], { numbers: [3] })[0].html,
-			'<p>An ammeter.</p>');
+			'<ol start="3"><li>An ammeter.</li></ol>');
 	});
-	it('bare stems untouched; decimals safe; input never mutated', () => {
+	it('bare stems gain generated numbers; decimals safe; input never mutated', () => {
 		const seg = T('<p>The velocity graph.</p>');
-		assert.equal(dressQuestion([seg], { numbers: [1] })[0].html, '<p>The velocity graph.</p>');
+		assert.equal(dressQuestion([seg], { numbers: [1] })[0].html, '<ol start="1"><li>The velocity graph.</li></ol>');
 		assert.equal(dressQuestion([T('<p>3.16 is the value.</p>')], { numbers: [2] })[0].html,
-			'<p>3.16 is the value.</p>');
+			'<ol start="2"><li>3.16 is the value.</li></ol>');
 		assert.equal(seg.html, '<p>The velocity graph.</p>');
 	});
 });

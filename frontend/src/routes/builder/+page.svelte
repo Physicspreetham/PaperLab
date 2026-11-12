@@ -335,12 +335,12 @@ import { cartStore } from '$lib/carts.js';
 					/>
 				</label>
 				<div class="moderow" role="radiogroup" aria-label="Draft mode">
-					<label class:off={!empty && draft.mode !== 'paper'}>
-						<input type="radio" name="mode" checked={draft.mode === 'paper'} disabled={!empty} onchange={() => builder.newDraft('paper')} />
+					<label>
+						<input type="radio" name="mode" checked={draft.mode === 'paper'} onchange={() => builder.setMode('paper')} />
 						Paper <span class="pl-sub">(sections)</span>
 					</label>
-					<label class:off={!empty && draft.mode !== 'assignment'}>
-						<input type="radio" name="mode" checked={draft.mode === 'assignment'} disabled={!empty} onchange={() => builder.newDraft('assignment')} />
+					<label>
+						<input type="radio" name="mode" checked={draft.mode === 'assignment'} onchange={() => builder.setMode('assignment')} />
 						Assignment <span class="pl-sub">(flat)</span>
 					</label>
 				</div>

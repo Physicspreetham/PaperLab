@@ -57,6 +57,17 @@ export function createDraft(mode = 'paper', title = '') {
 	};
 }
 
+/** Change layout without discarding questions, their IDs, or answer overrides. */
+export function setDraftMode(draft,mode) {
+	if (!['paper','assignment'].includes(mode) || draft.mode===mode) return draft;
+	if (mode==='paper') return autoGroup({...draft,mode}).draft;
+	const seen=new Set();const blockIds=[];
+	for (const id of [...draft.sections.flatMap(s=>s.blockIds),...Object.keys(draft.blocks)]) {
+		if (draft.blocks[id] && !seen.has(id)) {seen.add(id);blockIds.push(id);}
+	}
+	return touch({...draft,mode,sections:[{id:newSectionId(),title:'Assignment',atype:'mixed',locked:true,blockIds}]});
+}
+
 /** Normalize one cart/draft item into a block identity snapshot. Null when invalid. */
 export function toBlock(src) {
 	if (!src || typeof src !== 'object') return null;

@@ -10,6 +10,7 @@ import { writable, derived } from 'svelte/store';
 import {
 	BUILDER_SCHEMA_VERSION,
 	createDraft,
+	setDraftMode,
 	importBlocks,
 	autoGroup,
 	addSection,
@@ -106,6 +107,9 @@ export const builder = {
 	},
 	newDraft(mode) {
 		builderStore.set(createDraft(mode === 'assignment' ? 'assignment' : 'paper'));
+	},
+	setMode(mode) {
+		builderStore.update(d=>setDraftMode(d,mode));
 	},
 	importFromCart(items, opts) {
 		let out = { added: [], skipped: [] };
