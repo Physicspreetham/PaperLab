@@ -90,7 +90,7 @@
 			<details class="sources"><summary>Source — {sources.length ? `${sources.length} selected` : 'all sources'}</summary>
 				<input class="pl-input" aria-label="Find EJEE source" type="search" bind:value={sourceFind} placeholder="Find a book, paper or source…" />
 				<div class="source-list">{#each sourceOptions as option (option.value)}
-					<label><input type="checkbox" checked={sources.includes(option.value)} onchange={e => sourceToggle(option.value,e.currentTarget.checked)} />{label(option.value)} <small>({option.count})</small></label>
+					<label><input type="checkbox" checked={sources.includes(option.value)} onchange={e => sourceToggle(option.value,e.currentTarget.checked)} /><span>{label(option.value)}</span><small>({option.count})</small></label>
 				{/each}</div>
 				<button class="pl-btn" type="button" onclick={() => sources=[]}>Clear source filter</button>
 			</details>
@@ -107,8 +107,8 @@
 				<label>Status<select bind:value={status}><option value="">All statuses</option>{#each facets.status as o}<option value={o.value}>{o.value === '__none__' ? 'Not attempted' : o.value}</option>{/each}</select></label>
 			</div>
 			<label class="search-label">Search question text / title<input class="pl-input" type="search" bind:value={q} maxlength="250" placeholder="Question words, title, tags…" /></label>
-			<div class="actions"><label><input type="checkbox" bind:checked={fav} /> Favourites only</label><label><input type="checkbox" bind:checked={altered} /> Altered only</label>
-				<button class="pl-btn pl-btn-primary" disabled={loading}>Apply filters</button><button class="pl-btn" type="button" onclick={clearFilters}>Clear filters</button></div>
+			<div class="actions filter-actions"><div class="filter-toggles"><label><input type="checkbox" bind:checked={fav} /> Favourites only</label><label><input type="checkbox" bind:checked={altered} /> Altered only</label></div>
+				<div class="filter-buttons"><button class="pl-btn pl-btn-primary" disabled={loading}>Apply filters</button><button class="pl-btn" type="button" onclick={clearFilters}>Clear filters</button></div></div>
 		</form>
 	{/if}
 	{#if loading}<p role="status">Reading EJEE questions…</p>{/if}
@@ -148,15 +148,25 @@
 	.picker { margin-top:22px; padding:22px; }
 	h2 { margin:0 0 12px; }
 	.sources,.basket { border:1px solid var(--pl-line); border-radius:10px; padding:14px; margin:18px 0; }
-	summary { cursor:pointer; font-weight:600; }
+	summary { cursor:pointer; font-weight:600; line-height:1.5; text-align:left; }
 	.source-list { max-height:240px; overflow:auto; margin:12px 0; }
-	.source-list label { display:flex; align-items:center; gap:10px; padding:6px 0; }
+	.source-list label { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:start; gap:10px; padding:8px 0; line-height:1.5; }
+	.source-list label span { overflow-wrap:anywhere; }
+	.source-list small { margin:0; line-height:1.5; text-align:right; }
+	input[type=checkbox] { box-sizing:border-box; width:16px; height:16px; min-height:16px; padding:0; flex:none; margin:3px 0 0; }
 	.filter-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-	.filter-grid label,.search-label,.collection label { display:grid; gap:7px; }
-	select,input:not([type=checkbox]) { color:inherit; background:var(--pl-surface); border:1px solid var(--pl-line); border-radius:8px; padding:10px; min-width:0; width:100%; }
+	.filter-grid label,.search-label,.collection label { display:grid; gap:8px; min-width:0; align-content:start; line-height:1.5; }
+	select,input:not([type=checkbox]) { box-sizing:border-box; color:inherit; background-color:var(--pl-surface); border:1px solid var(--pl-line); border-radius:8px; padding:11px 12px; min-width:0; width:100%; height:46px; font:inherit; line-height:1.4; text-align:left; }
+	select { appearance:none; padding-right:38px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px; background-repeat:no-repeat; }
+	.pl-btn { display:inline-flex; justify-content:center; align-items:center; min-height:44px; box-sizing:border-box; padding:10px 16px; font:inherit; font-weight:600; line-height:1.4; text-align:center; white-space:normal; }
 	.search-label { margin-top:14px; }
 	.actions,.selection-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:18px 0; }
-	.actions label { display:flex; gap:8px; align-items:center; }
+	.actions label { display:flex; gap:8px; align-items:center; line-height:1.5; }
+	.actions label input { margin:0; }
+	.filter-actions { justify-content:space-between; }
+	.filter-toggles { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; }
+	.filter-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+	.selection-bar strong { flex:1 0 100%; }
 	.results { display:grid; gap:14px; }
 	article { border:1px solid var(--pl-line); border-radius:10px; padding:16px; }
 	article.chosen { border-color:var(--pl-accent); background:var(--pl-surface); }
@@ -168,5 +178,5 @@
 	.preview { display:block; max-width:100%; height:auto; margin-top:14px; background:white; border-radius:6px; }
 	.collection { border-top:1px solid var(--pl-line); padding-top:20px; margin-top:24px; }
 	.basket-row { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:10px 0; }
-	@media(max-width:650px) { .filter-grid { grid-template-columns:1fr; } .picker { padding:16px; } }
+	@media(max-width:650px) { .filter-grid { grid-template-columns:1fr; } .picker { padding:16px; } .filter-toggles,.filter-buttons { width:100%; } .selection-bar .pl-btn { width:100%; } .basket-row { align-items:flex-start; } .basket-row span { min-width:0; overflow-wrap:anywhere; } .basket-row .pl-btn { flex-shrink:0; } }
 </style>
