@@ -37,6 +37,7 @@ def test_import_endpoints_require_archivist_access(ejee_app):
     assert client.get('/api/ejee/filters').status_code==401
     assert client.post('/api/ejee/questions/search',json={}).status_code==401
     assert client.get('/api/ejee/questions/67760/preview').status_code==401
+    assert client.get('/api/ejee/questions/67760').status_code==401
     assert client.get('/api/ejee/usage/selection').status_code==401
 
 
@@ -100,6 +101,9 @@ def test_selective_import_freezes_only_selection_in_separate_store(ejee_app,tmp_
     cards=client.post('/api/ejee/questions/search',json={'filters':{'qtype':'Subjective'},'limit':2}).json()
     assert len(cards['items'])==2 and cards['items'][0]['ready']
     assert client.get('/api/ejee/questions/67760/preview').headers['content-type']=='image/png'
+    assert client.get('/api/ejee/questions/67760?source_token='+facets['source_token']).json()['id']==67760
+    assert client.get('/api/ejee/questions/67760/preview?size=thumbnail').status_code==200
+    assert client.get('/api/ejee/questions/67760/preview?size=invalid').status_code==422
     body={'name':'My selected problems','resource_ids':[67760,67763],'source_token':facets['source_token']}
     first=client.post('/api/ejee/selections',json=body)
     assert first.status_code==202,first.text

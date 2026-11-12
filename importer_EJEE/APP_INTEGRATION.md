@@ -15,6 +15,24 @@ Selective import needs **no textbook chapter mapping**. Optional complete-chapte
 
 ## Exact selection and provenance
 
+Filtered results are lazy-loaded image thumbnails. Clicking one opens a native
+modal viewer with the original source pixels, a Fit/Original size toggle,
+selection checkbox and import-cart icon. Source, syllabus, model, level,
+exam/year/shift, status, tags, answer/transcription and mapped-part details are
+available in its details panel. Mobile starts with details hidden to maximize
+the image; the Show details button opens them.
+
+Mouse-wheel gestures over the fitted image slide through matching questions,
+including across result pages. Trackpad momentum is throttled to avoid skipping
+many questions. Previous/Next buttons and left/right arrow keys also work; Escape
+closes the viewer. In Original size mode, wheel scrolling reads the large image
+instead. Import-cart icons and checkboxes update the same selection basket;
+conversion starts only with the explicit Process selected questions action.
+This source-selection cart is distinct from the builder cart for processed TeX
+questions. Thumbnails are limited to 480×360; full previews retain original body
+pixels. All endpoints require archivist access and reject mismatched source
+tokens; no source files/database rows are changed and no AI calls are made.
+
 The browser submits explicit resource IDs with a source-configuration token. The server revalidates them, freezes every original resource column and node ancestry, and attaches solutions by the exact `(source, grp)` pair, even if the solution has different filter tags. Independent NULL-group questions stay independent; NULL part is treated as a question with its original value retained. Continuation cards deduplicate to one logical question; ambiguous shared groups are rejected before AI calls. Solution/concept cards cannot be submitted as question anchors.
 
 `selection.json` retains selected/included resource IDs and a content fingerprint; the config records the submitted filters and collection name. Explicit IDs are authoritative when a basket combines several filter searches. Only frozen items become lossless image canvases and enter extraction. Collection question IDs are local sequential numbers, while source labels/IDs remain in the published provenance manifest. Mixed-source collections retain each question's original source. A repeated identical selection (regardless of click order/name) reuses its active/published result.

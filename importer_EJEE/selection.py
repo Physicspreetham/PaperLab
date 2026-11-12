@@ -175,8 +175,29 @@ def snapshot(resource_ids):
     finally:c.close()
 
 
-def preview(resource_id):
+def details(resource_id,expected_source=None):
+    if expected_source and expected_source!=source_token():raise ValueError('EJEE source changed. Refresh the results.')
+    cfg=service.settings();c=service.source_connection(cfg['source_db'])
+    try:
+        row=c.execute('SELECT r.* FROM resources r WHERE '+ELIGIBLE+' AND r.id=?',(resource_id,)).fetchone()
+        if row is None:raise FileNotFoundError('EJEE question not found')
+        fields=('id','title','source','grp','type','qtype','difficulty','exam','year','shift','status','fav','altered','tags','question','answer','solution','uid','review','created_at')
+        item={key:row[key] for key in fields}
+        nodes={r['id']:dict(r) for r in c.execute('SELECT id,parent_id,name FROM nodes')}
+        item['path']=node_path(nodes,row['topic_id'])
+        item['selection_key']=selection_key(row)
+        item['issue']=image_issue(row,cfg['asset_root']);item['ready']=not item['issue']
+        parts=c.execute("SELECT id,title,part FROM resources WHERE source IS ? AND grp=? ORDER BY position,id",(row['source'],row['grp'])).fetchall() if row['grp'] else [row]
+        item['question_parts']=[{'id':r['id'],'title':r['title']} for r in parts if (r['part'] or 'q')=='q']
+        item['solution_parts']=sum(r['part']=='sol' for r in parts)
+        return item
+    finally:c.close()
+
+
+def preview(resource_id,size='full',expected_source=None):
     from PIL import Image
+    if size not in ('thumbnail','full'):raise ValueError('Invalid image size')
+    if expected_source and expected_source!=source_token():raise ValueError('EJEE source changed. Refresh the results.')
     cfg=service.settings();c=service.source_connection(cfg['source_db'])
     try:
         row=c.execute('SELECT * FROM resources r WHERE '+ELIGIBLE+' AND r.id=?',(resource_id,)).fetchone()
@@ -186,6 +207,7 @@ def preview(resource_id):
         meta=json.loads(row['print_meta']);box=meta.get('box') or meta['qbox']
         with Image.open(Path(cfg['asset_root'])/row['file_name']) as im:
             im=im.convert('RGB');im=im.crop((int(box[0]*im.width),int(box[1]*im.height),int(box[2]*im.width+.999),int(box[3]*im.height+.999)))
-            im.thumbnail((1100,1600));data=io.BytesIO();im.save(data,format='PNG')
+            if size=='thumbnail':im.thumbnail((480,360))
+            data=io.BytesIO();im.save(data,format='PNG')
         return data.getvalue()
     finally:c.close()

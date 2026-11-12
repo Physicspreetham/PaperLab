@@ -1,10 +1,12 @@
 import json
+import io
 from pathlib import Path
 import shutil
 import sqlite3
 import sys
 
 import pytest
+from PIL import Image
 
 APP=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(APP))
@@ -44,6 +46,22 @@ def test_snapshot_keeps_only_exact_selected_group_with_own_solutions(source):
     assert frozen['items'][0]['question_rows'][0]['source']=='Unmapped source'
     assert source.read_bytes()==before
     assert selection.preview(67760).startswith(b'\x89PNG')
+
+
+def test_gallery_metadata_and_full_size_image_remain_read_only_and_source_scoped(source):
+    before=source.read_bytes();token=selection.source_token()
+    info=selection.details(67760,token)
+    assert info['source']=='Unmapped source' and info['solution_parts']==2
+    assert info['question_parts'][0]['id']==67760
+    assert 'file_name' not in info and 'print_meta' not in info
+    full=Image.open(io.BytesIO(selection.preview(67760,'full',token)))
+    thumb=Image.open(io.BytesIO(selection.preview(67760,'thumbnail',token)))
+    assert thumb.width<=480 and thumb.height<=360
+    assert full.width>thumb.width or full.height>thumb.height
+    assert source.read_bytes()==before
+    with pytest.raises(ValueError,match='source changed'):selection.preview(67760,'full','0'*64)
+    with pytest.raises(ValueError,match='source changed'):selection.details(67760,'0'*64)
+    with pytest.raises(FileNotFoundError):selection.details(67761,token)
 
 
 def test_null_group_is_independent_and_like_search_is_literal(source):

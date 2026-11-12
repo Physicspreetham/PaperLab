@@ -1,5 +1,6 @@
 """Archivist-only EJEE database import UI endpoints."""
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -60,8 +61,14 @@ def search_questions(body: SearchBody):
 
 
 @router.get('/questions/{resource_id}/preview')
-def question_preview(resource_id: int):
-    try:return Response(selection.preview(resource_id),media_type='image/png')
+def question_preview(resource_id: int,size: Literal['thumbnail','full']='full',source_token: str|None=None):
+    try:return Response(selection.preview(resource_id,size,source_token),media_type='image/png')
+    except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
+
+
+@router.get('/questions/{resource_id}')
+def question_details(resource_id: int,source_token: str|None=None):
+    try:return selection.details(resource_id,source_token)
     except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
 
 

@@ -1,6 +1,8 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
+	import EjeeImageViewer from './EjeeImageViewer.svelte';
+	import EjeeImportCartButton from './EjeeImportCartButton.svelte';
 	let { aiReady = false, onQueued = async () => {} } = $props();
 	let facets = $state(null), rows = $state([]), total = $state(0), offset = $state(0);
 	let busy = $state(false), loading = $state(true), error = $state(''), message = $state('');
@@ -11,6 +13,8 @@
 	let requestVersion = 0;
 	const PAGE = 30;
 	const count = $derived(Object.keys(chosen).length);
+	const previewRow = $derived(rows.find(r => r.id === openPreview));
+	const previewIndex = $derived(rows.findIndex(r => r.id === openPreview));
 	const nodes = $derived(facets?.nodes || []);
 	const modules = $derived(nodes.filter(n => n.level === 'module'));
 	function below(id,parent) {
@@ -31,17 +35,25 @@
 	function sourceToggle(value,checked) { sources = checked ? [...new Set([...sources,value])] : sources.filter(v => v !== value); }
 	function filters() { return { source:sources, node_id:topicId || weekId || chapterId || moduleId || null,
 		q, qtype:model, difficulty:level, type:section, exam, year, status, fav, altered }; }
-	async function search(next = 0,apply = false) {
+	async function search(next = 0,apply = false,previewEdge = null) {
 		const version = ++requestVersion; loading = true; error = '';
 		const selectedFilters = apply ? filters() : appliedFilters;
 		try {
 			const data = await api.searchEjeeQuestions({filters:selectedFilters,offset:next,limit:PAGE});
 			if (version !== requestVersion) return;
 			if (data.source_token !== facets.source_token) throw new Error('The EJEE source changed. Reload this page before selecting more questions.');
-			rows = data.items; total = data.total; offset = next; appliedFilters = selectedFilters; openPreview = null;
+			rows = data.items; total = data.total; offset = next; appliedFilters = selectedFilters; openPreview = previewEdge === 'first' ? data.items[0]?.id : previewEdge === 'last' ? data.items.at(-1)?.id : null;
 		} catch(e) { if(version === requestVersion) error = e.message; }
 		finally { if(version === requestVersion) loading = false; }
 	}
+	async function movePreview(step) {
+		if (loading) return;
+		const next = previewIndex + step;
+		if (next >= 0 && next < rows.length) openPreview = rows[next].id;
+		else if (step > 0 && offset+PAGE < total) await search(offset+PAGE,false,'first');
+		else if (step < 0 && offset > 0) await search(Math.max(0,offset-PAGE),false,'last');
+	}
+	function cannotSelect(row) { return !row.ready || busy || (count >= facets.max_selection && !chosen[row.selection_key]); }
 	function toggle(row,checked) {
 		const next = {...chosen};
 		if (checked) next[row.selection_key] = row; else delete next[row.selection_key];
@@ -113,26 +125,27 @@
 	{/if}
 	{#if loading}<p role="status">Reading EJEE questions…</p>{/if}
 	{#if facets}
-		<div class="selection-bar"><strong>{count} questions selected</strong><button class="pl-btn" disabled={!rows.length || loading} onclick={selectPage}>Select eligible questions on this page</button><button class="pl-btn" disabled={!count} onclick={() => chosen={}}>Clear selection</button></div>
+		<div class="selection-bar"><strong>Import cart · {count} questions selected</strong><button class="pl-btn" disabled={!rows.length || loading} onclick={selectPage}>Select eligible questions on this page</button><button class="pl-btn" disabled={!count} onclick={() => chosen={}}>Clear selection</button></div>
+		<p class="muted">Click a thumbnail for the large viewer; scroll over its image to slide questions. Cart icons add to the import selection.</p>
 		<p class="muted">{total.toLocaleString()} matching question cards · {rows.length ? offset+1 : 0}–{Math.min(offset+PAGE,total)} shown. Selections stay when you change filters or pages; linked continuation cards count as one question.</p>
 		<div class="results" aria-busy={loading}>
 			{#each rows as row (row.id)}
 				<article class:chosen={!!chosen[row.selection_key]}>
-					<label class="question-choice"><input type="checkbox" aria-label={`Select ${row.title}`} checked={!!chosen[row.selection_key]} disabled={!row.ready || busy || (count >= facets.max_selection && !chosen[row.selection_key])} onchange={e => toggle(row,e.currentTarget.checked)} />
-						<span><strong>{row.title}</strong><small>{row.source || 'Unspecified source'}</small></span></label>
-					<p class="path">{row.path}</p><p class="meta">{row.qtype || 'Model not tagged'} · {row.difficulty || 'Not graded'} · {row.solution_parts} solution image parts{row.answer ? ' · answer available' : ''}</p>
-					{#if row.question}<p class="excerpt">{row.question}</p>{/if}
-					{#if row.issue}<p class="pl-error">{row.issue}</p>{:else}
-						<button class="pl-btn" onclick={() => openPreview = openPreview === row.id ? null : row.id}>{openPreview === row.id ? 'Hide image' : 'Preview question image'}</button>
-						{#if openPreview === row.id}<img class="preview" src={`/api/ejee/questions/${row.id}/preview`} alt={`Source image for ${row.title}`} />{/if}
-					{/if}
+					<div class="card-actions"><label class="question-choice"><input type="checkbox" aria-label={`Select ${row.title}`} checked={!!chosen[row.selection_key]} disabled={cannotSelect(row)} onchange={e => toggle(row,e.currentTarget.checked)} /><strong>{row.title}</strong></label>
+						<EjeeImportCartButton selected={!!chosen[row.selection_key]} disabled={cannotSelect(row)} title={row.title} onToggle={() => toggle(row,!chosen[row.selection_key])} /></div>
+					<button class="thumbnail" type="button" disabled={!row.ready} aria-label={`Open full image for ${row.title}`} onclick={() => openPreview = row.id}>
+						{#if row.ready}<img src={`/api/ejee/questions/${row.id}/preview?size=thumbnail&source_token=${encodeURIComponent(facets.source_token)}`} alt={`Thumbnail of ${row.title}`} loading="lazy" decoding="async" />{:else}<span>Image unavailable</span>{/if}
+					</button>
+					<p class="card-source">{row.source || 'Unspecified source'}</p>
+					<p class="path">{row.path}</p><p class="meta">{row.qtype || 'Model not tagged'} · {row.difficulty || 'Not graded'} · {row.solution_parts} solution parts</p>
+					{#if row.issue}<p class="pl-error">{row.issue}</p>{/if}
 				</article>
 			{/each}
 			{#if !loading && !rows.length}<p>No questions match these filters.</p>{/if}
 		</div>
 		<div class="actions"><button class="pl-btn" disabled={loading || offset===0} onclick={() => search(Math.max(0,offset-PAGE))}>← Previous page</button><button class="pl-btn" disabled={loading || offset+PAGE>=total} onclick={() => search(offset+PAGE)}>Next page →</button></div>
 		{#if count}
-			<details class="basket"><summary>Review selected questions ({count})</summary>{#each Object.values(chosen) as row (row.selection_key)}<div class="basket-row"><span>{row.title} — {row.source}</span><button class="pl-btn" onclick={() => toggle(row,false)}>Remove</button></div>{/each}</details>
+			<details class="basket"><summary>Review import cart ({count})</summary>{#each Object.values(chosen) as row (row.selection_key)}<div class="basket-row"><span>{row.title} — {row.source}</span><button class="pl-btn" onclick={() => toggle(row,false)}>Remove</button></div>{/each}</details>
 		{/if}
 		<div class="collection"><label>Collection name<input class="pl-input" bind:value={name} maxlength="180" placeholder="e.g. Electrostatics — selected numerical questions" /></label>
 			<p>Only your selected questions and their own mapped solutions will be converted. Diagrams and fresh PaperLab topic classification are included. The collection appears in the separate EJEE library, without changing the ordinary Archive.</p>
@@ -143,6 +156,10 @@
 		</div>
 	{/if}
 </section>
+
+{#if previewRow}
+	<EjeeImageViewer row={previewRow} index={offset+previewIndex} {total} sourceToken={facets.source_token} selected={!!chosen[previewRow.selection_key]} disabled={cannotSelect(previewRow)} navigating={loading} onToggle={checked => toggle(previewRow,checked)} onClose={() => openPreview=null} onMove={movePreview} />
+{/if}
 
 <style>
 	.picker { margin-top:22px; padding:22px; }
@@ -167,15 +184,20 @@
 	.filter-toggles { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; }
 	.filter-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 	.selection-bar strong { flex:1 0 100%; }
-	.results { display:grid; gap:14px; }
+	.results { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:16px; }
 	article { border:1px solid var(--pl-line); border-radius:10px; padding:16px; }
 	article.chosen { border-color:var(--pl-accent); background:var(--pl-surface); }
 	.question-choice { display:flex; align-items:flex-start; gap:12px; cursor:pointer; }
 	.question-choice input { margin-top:5px; }
 	small { display:block; opacity:.75; margin-top:4px; }
 	.path,.meta,.muted { font-size:.86rem; opacity:.75; line-height:1.6; }
-	.excerpt { font-size:.9rem; max-height:110px; overflow:auto; }
-	.preview { display:block; max-width:100%; height:auto; margin-top:14px; background:white; border-radius:6px; }
+	.card-actions { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+	.question-choice strong { font-size:.95rem; overflow-wrap:anywhere; }
+	.thumbnail { display:flex; align-items:center; justify-content:center; width:100%; height:210px; padding:10px; margin-top:12px; border:1px solid var(--pl-line); border-radius:8px; background:white; cursor:zoom-in; }
+	.thumbnail img { display:block; max-width:100%; max-height:100%; object-fit:contain; }
+	.thumbnail:disabled { cursor:default; opacity:.5; }
+	.card-source { font-size:.85rem; font-weight:600; overflow-wrap:anywhere; }
+	.path { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 	.collection { border-top:1px solid var(--pl-line); padding-top:20px; margin-top:24px; }
 	.basket-row { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:10px 0; }
 	@media(max-width:650px) { .filter-grid { grid-template-columns:1fr; } .picker { padding:16px; } .filter-toggles,.filter-buttons { width:100%; } .selection-bar .pl-btn { width:100%; } .basket-row { align-items:flex-start; } .basket-row span { min-width:0; overflow-wrap:anywhere; } .basket-row .pl-btn { flex-shrink:0; } }
