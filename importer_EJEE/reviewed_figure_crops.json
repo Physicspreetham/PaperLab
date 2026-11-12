@@ -1,0 +1,50 @@
+[
+  {
+    "group": "allenft-adv26-p49-15",
+    "filename": "qfig1.png",
+    "source_body_sha256": "3c82d06b4ac47a42b50a253ccb0bb248042e9c2b34d5c75dce98c784dfe4621c",
+    "source_pixel_box": [
+      45,
+      435,
+      885,
+      752
+    ],
+    "reason": "Include T/B labels and complete blue fluid; remove page-wide whitespace."
+  },
+  {
+    "group": "allenft-adv26-p39-13",
+    "filename": "qfig1.png",
+    "source_body_sha256": "be6f071f3cac3157c96621ae62df1b2b896cffdc0412423e117c711a69e6a822",
+    "source_pixel_box": [
+      632,
+      242,
+      1488,
+      570
+    ],
+    "reason": "Keep complete D/d arrows and plates; exclude adjacent statement fragment at lower left."
+  },
+  {
+    "group": "allenft-adv26-p6-10",
+    "filename": "qfig1.png",
+    "source_body_sha256": "4e94d77cd8c8f39af009e14218b2b114d40f915918fe1861219932d43cc47b7a",
+    "source_pixel_box": [
+      60,
+      280,
+      1285,
+      648
+    ],
+    "reason": "Keep plate numbers 1/2 and D/d labels; exclude previous text line."
+  },
+  {
+    "group": "allenft-adv26-p6-10",
+    "filename": "sfig1.png",
+    "source_body_sha256": "f1f75f3b594f797f4ea0f27b3a2e3cf197e887763ad585f5a1a05ee9ae6f582a",
+    "source_pixel_box": [
+      15,
+      386,
+      525,
+      887
+    ],
+    "reason": "Keep full F/P0A and pressure-force labels with complete closing bracket."
+  }
+]

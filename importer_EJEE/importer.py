@@ -315,6 +315,11 @@ def validate_item(pid, number, has_solution):
             refs.add(file)
     for path in (qdir / 'figures').glob('*.png'):
         if path.name not in refs: errors.append(f'Unreferenced figure {path.name}')
+    review_path=qdir/'figures'/'_raster_review.json'
+    if review_path.exists():
+        for filename,review in json.loads(review_path.read_text()).items():
+            if filename in refs and review['edge_warnings']:
+                errors.append(filename+': re-crop edge-touching source ink at '+', '.join(review['edge_warnings']))
     return errors
 
 
@@ -323,7 +328,10 @@ def extract_item(manifest, item, cfg, run):
     from langgraph.types import Command
     import database
     import tools_extractor as tools
+    from raster_figures import crop_figure
+    from PIL import Image
     from llm import get_llm, invoke_with_retry
+    import directory_manager
     pid, number = manifest['paper_id'], item['number']
     # These canvases are 200 dpi raster sources, unlike upstream vector PDFs.
     # Keep its crop algorithms but do not save a 600 dpi upsample of the pixels.
@@ -383,6 +391,23 @@ def extract_item(manifest, item, cfg, run):
                 else:
                     messages.append(ToolMessage(content=str(result), tool_call_id=call['id']))
                     if name in ('submit_question', 'submit_solution') and str(result) == 'saved': saved.add(name)
+                if name in ('assisted_crop','exact_crop'):
+                    replies=result.update.get('messages',[]) if isinstance(result,Command) else []
+                    reply='\n'.join(m.content for m in replies if isinstance(m,ToolMessage) and isinstance(m.content,str)) or str(result)
+                    final=re.search(r'final box: (\[[^\]]+\])',reply)
+                    if final and reply.startswith('Saved '):
+                        side='question' if args['pdf_path']==manifest['question_pdf'] else 'solution'
+                        idx=item[f'{side}_pages'].index(args['page_number'])
+                        body=item[f'{side}_rows'][idx]['asset_evidence']['body_png']
+                        qdir=directory_manager.get_question_dir(pid,number)
+                        dest=qdir/'figures'/args['output_filename']
+                        with Image.open(body) as im:preview,review=crop_figure(im,json.loads(final[1]))
+                        preview.save(dest,format='PNG')
+                        review_path=qdir/'figures'/'_raster_review.json'
+                        reviews=json.loads(review_path.read_text()) if review_path.exists() else {}
+                        reviews[args['output_filename']]=review;dump(review_path,reviews)
+                        note=('RE-CROP REQUIRED: source ink touches '+', '.join(review['edge_warnings'])+'. Expand those edges to include the complete diagram/labels, or tighten past foreign text. White output padding does not restore missing pixels.' if review['edge_warnings'] else 'Raster edges have clearance. Compare with the full source: exclude statement fragments and include every dimension label.')
+                        messages.append(HumanMessage(content=[{'type':'text','text':args['output_filename']+': '+note},tools.img_block(dest,tools.PAGE_PX)]))
             except Exception as exc:
                 messages.append(ToolMessage(content=f'Error: {type(exc).__name__}: {exc}', tool_call_id=call['id']))
         dump(log, {'turns': turn+1, 'elapsed_sec': time.time()-t0, 'messages': [clean_message(m) for m in messages]})
@@ -429,12 +454,17 @@ def valid_classification(report):
 
 
 def reviewed_crops(cfg):
-    return json.loads((ROOT / cfg['reviewed_crops']).read_text(encoding='utf-8')) if cfg.get('reviewed_crops') else []
+    explicit=json.loads((ROOT / cfg['reviewed_crops']).read_text(encoding='utf-8')) if cfg.get('reviewed_crops') else []
+    bundled=ROOT/'reviewed_figure_crops.json'
+    defaults=json.loads(bundled.read_text(encoding='utf-8')) if bundled.exists() else []
+    keys={(r['group'],r['filename'],r['source_body_sha256']) for r in explicit}
+    return explicit+[r for r in defaults if (r['group'],r['filename'],r['source_body_sha256']) not in keys]
 
 
 def reuse_reviewed(cfg, item, pid, number):
     """Reuse only reviewed isolated rectangles whose source pixel hash still matches."""
     from PIL import Image
+    from raster_figures import crop_figure
     import directory_manager
     reused = []
     for crop in reviewed_crops(cfg):
@@ -449,8 +479,10 @@ def reuse_reviewed(cfg, item, pid, number):
                     b = crop['source_pixel_box']
                     if not (0 <= b[0] < b[2] <= im.width and 0 <= b[1] < b[3] <= im.height): raise ValueError('Invalid reviewed diagram bounds')
                     qdir = directory_manager.ensure_question_dir(pid, number)
-                    im.crop(b).save(qdir / 'figures' / crop['filename'])
-                reused.append({'filename': crop['filename'], 'side': side, 'page': page, 'resource_id': row['id'], 'review': crop['reason']})
+                    figure,info=crop_figure(im,b,pixel_box=True)
+                    if info['edge_warnings']:raise ValueError('Reviewed diagram still touches its source crop edges')
+                    figure.save(qdir / 'figures' / crop['filename'])
+                reused.append({'filename': crop['filename'], 'side': side, 'page': page, 'resource_id': row['id'], 'review': crop['reason'],'raster_review':info})
     return reused
 
 
@@ -485,6 +517,7 @@ def figures(cfg, run):
     """Export accepted raster boxes from original pixels, without PDF upsampling."""
     import math
     from PIL import Image
+    from raster_figures import crop_figure
     import directory_manager
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     exported = []
@@ -515,12 +548,13 @@ def figures(cfg, run):
                       min(im.width, math.ceil((x+w+1)*im.width/1000)), min(im.height, math.ceil((y+h+1)*im.height/1000))]
                 review = next((r for r in reviewed_crops(cfg) if r['group'] == item['group'] and r['filename'] == filename and r['source_body_sha256'] == source['body_sha256']), None)
                 if review: px = review['source_pixel_box']
-                cropped = im.crop(px)
+                cropped,review_info = crop_figure(im,px,pixel_box=True)
+                if review_info['edge_warnings']:
+                    raise ValueError(f'{item["number"]}/{filename}: source ink touches {review_info["edge_warnings"]}; review crop before publishing')
                 dest = qdir / 'figures' / filename
                 cropped.save(dest, format='PNG')
                 evidence[filename] = {'source_body': source['body_png'], 'source_sha256': source['body_sha256'],
-                                      'tool_final_box': box, 'source_pixel_box': px, 'size': list(cropped.size),
-                                      'sha256': sha(dest), 'method': 'lossless source-pixel crop; one normalized unit safety margin'}
+                                      'tool_final_box': box, **review_info,'sha256': sha(dest)}
                 if review: evidence[filename]['review_override'] = review
         for reused in reuse_reviewed(cfg, item, manifest['paper_id'], item['number']):
             crop = next(r for r in reviewed_crops(cfg) if r['group'] == item['group'] and r['filename'] == reused['filename'])
@@ -529,8 +563,8 @@ def figures(cfg, run):
             with Image.open(dest) as im: size = list(im.size)
             evidence[reused['filename']] = {**evidence.get(reused['filename'], {}),
                 'source_body': source['body_png'], 'source_sha256': source['body_sha256'],
-                'source_pixel_box': crop['source_pixel_box'], 'size': size, 'sha256': sha(dest),
-                'method': 'reviewed source-pixel crop reused by exact image hash', 'review_override': crop}
+                **reused['raster_review'], 'size': size, 'sha256': sha(dest),
+                'method': 'reviewed source-pixel crop reused by exact image hash; trimmed and padded', 'review_override': crop}
         if evidence:
             dump(qdir / 'figures' / '_import_provenance.json', evidence)
             exported.extend({'question': item['number'], 'filename': k, **v} for k,v in evidence.items())
