@@ -12,7 +12,8 @@
 		"test:sheet": "node --test scripts/sheet-fetch.test.mjs",
 		"test:model-picker": "node --test scripts/model-picker.test.mjs",
 		"test:builder": "node --test scripts/builder-model.test.mjs",
-		"test:dress": "node --test scripts/paper-dress.test.mjs"
+		"test:dress": "node --test scripts/paper-dress.test.mjs",
+		"test:subtopic": "node --test scripts/subtopic-order.test.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.0",

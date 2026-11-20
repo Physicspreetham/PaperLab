@@ -73,6 +73,8 @@ CUSTOM_STYLES = "".join(
         _pstyle("SecKind", "SecKind", '<w:spacing w:before="0" w:after="60" w:line="276" w:lineRule="auto"/><w:jc w:val="center"/>', "<w:b/><w:bCs/>"),
         # Instruction bullets: small and tight, as in the source header block.
         _pstyle("QBullet", "QBullet", '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="283" w:hanging="283"/>', '<w:sz w:val="19"/><w:szCs w:val="19"/>'),
+        # Subtopic title above each group of questions (EJEE assignments).
+        _pstyle("TopicHead", "TopicHead", '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/></w:pBdr><w:spacing w:before="240" w:after="120" w:line="276" w:lineRule="auto"/>', "<w:b/><w:bCs/>"),
         _pstyle("ParaHead", "ParaHead", '<w:keepNext/><w:spacing w:before="120" w:after="0"/>', "<w:b/><w:bCs/>"),
     ]
 )
@@ -144,6 +146,6 @@ def build_reference(pandoc_exe: str, dest: Path) -> None:
 
 @functools.lru_cache(maxsize=1)
 def reference_path(pandoc_exe: str) -> str:
-    dest = Path(tempfile.gettempdir()) / "paperlab_reference_v4.docx"
+    dest = Path(tempfile.gettempdir()) / "paperlab_reference_v5.docx"
     build_reference(pandoc_exe, dest)
     return str(dest)

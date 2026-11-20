@@ -113,6 +113,10 @@ def job_crop_edit(job_id: str, number: str, name: str, page: int,
         fail(exc)
 
 
+class OrderBody(BaseModel):
+    ids: list[int] = Field(max_length=2000)
+
+
 class TitleBody(BaseModel):
     title: str = Field(min_length=1, max_length=180)
 
@@ -298,6 +302,20 @@ def rename_paper(paper_id: int, body: TitleBody):
         return library.rename(paper_id, body.title)
     except (ValueError, OSError) as exc:
         fail(exc)
+
+
+@library_router.put('/papers/order', dependencies=[Depends(require_admin)])
+def order_papers(body: OrderBody):
+    try:
+        return library.set_order(body.ids)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@library_router.get('/papers/{paper_id}/order')
+def paper_order(paper_id: int):
+    try:return library.order_keys(paper_id)
+    except (ValueError,OSError) as exc:fail(exc)
 
 
 @library_router.get('/papers/{paper_id}/questions')

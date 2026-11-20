@@ -7,7 +7,15 @@
 	 * placeholders (<span class="pl-math[data-tex]">) produced by the exact
 	 * Streamlit splitting rules; this component only fills them with KaTeX.
 	 */
-	let { segments = [], bust = '', zoomable = false, eager = false, bare = false, scaleBadge = false } = $props();
+	let { segments = [], bust = '', zoomable = false, eager = false, bare = false, scaleBadge = false,
+		figureScale = null, figureMax = 300 } = $props();
+
+	/** Optional: show a figure at natural pixels x figureScale (capped), so its size tracks the source. */
+	function sizeFigure(event) {
+		if (!figureScale) return;
+		const img = event.currentTarget;
+		if (img.naturalWidth) img.style.width = `${Math.min(Math.round(img.naturalWidth * figureScale), figureMax)}px`;
+	}
 
 	/** Click-to-zoom lightbox. Opt-in (zoomable) so existing uses are unaffected. */
 
@@ -222,10 +230,10 @@
 			<figure class="fig">
 				{#if zoomable}
 					<button type="button" class="figbtn" onclick={() => (zoom = withBust(seg.url))} aria-label="View figure larger">
-						<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} use:figbadge={scaleBadge} />
+						<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} onload={sizeFigure} use:figbadge={scaleBadge} />
 					</button>
 				{:else}
-					<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} use:figbadge={scaleBadge} />
+					<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} onload={sizeFigure} use:figbadge={scaleBadge} />
 				{/if}
 			</figure>
 		{:else if seg.kind === 'table'}

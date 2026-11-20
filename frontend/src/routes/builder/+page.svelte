@@ -10,6 +10,7 @@ import { cartStore } from '$lib/carts.js';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
 	import { downloadDocx } from '$lib/exportDocx.js';
 	import { downloadPdf } from '$lib/exportPdf.js';
+	import { loadOrderKeys, orderBySubtopic } from '$lib/subtopicOrder.js';
 
 	const draft = $derived($builderStore);
 	const order = $derived($docOrder);
@@ -30,7 +31,7 @@ import { cartStore } from '$lib/carts.js';
 		docxMsg = null;
 		try {
 			const base = draft.title?.trim() || 'paper';
-			const title = previewMode === 'answers' ? `${base} - answers` : base;
+			const title = previewMode === 'all-answers' ? `${base} - all-type answers` : previewMode === 'answers' ? `${base} - answers` : base;
 			const { missing } = await downloadPdf(previewEl, title);
 			docxMsg = {
 				ok: missing === 0,
@@ -50,7 +51,7 @@ import { cartStore } from '$lib/carts.js';
 		docxMsg = null;
 		try {
 			const base = draft.title?.trim() || 'paper';
-			const title = previewMode === 'answers' ? `${base} - answers` : base;
+			const title = previewMode === 'all-answers' ? `${base} - all-type answers` : previewMode === 'answers' ? `${base} - answers` : base;
 			const { missing } = await downloadDocx(previewEl, title);
 			docxMsg = {
 				ok: missing === 0,
@@ -64,6 +65,11 @@ import { cartStore } from '$lib/carts.js';
 		}
 	}
 	let previewMode = $state('questions'); // questions | answers
+	let includeAnswerSolutions = $state(true);
+	const hasArchiveQuestions = $derived(order.some(e => e.library !== 'ejee'));
+	$effect(() => {
+		if (previewMode === 'answers' && !hasArchiveQuestions && order.length) previewMode = 'all-answers';
+	});
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let undo = $state(null);
 	let undoTimer = null;
@@ -139,10 +145,49 @@ import { cartStore } from '$lib/carts.js';
 	const activeCart = $derived($cartStore.carts.find((c) => c.id === cartId) ?? null);
 	const empty = $derived(nBlocks === 0);
 
-	function doImport(allowDupes) {
+	const SUBTOPIC_KEY = 'pl-builder-subtopic-order';
+	let subtopicOrder = $state(true);
+	let topicTitles = $state(true);
+	const TITLES_KEY = 'pl-builder-topic-titles';
+	if (browser) {
+		try { subtopicOrder = localStorage.getItem(SUBTOPIC_KEY) !== 'off'; topicTitles = localStorage.getItem(TITLES_KEY) !== 'off'; } catch { /* default on */ }
+	}
+	function setSubtopicOrder(on) {
+		subtopicOrder = on;
+		try { localStorage.setItem(SUBTOPIC_KEY, on ? 'on' : 'off'); } catch { /* keep in memory */ }
+	}
+	function setTopicTitles(on) {
+		topicTitles = on;
+		try { localStorage.setItem(TITLES_KEY, on ? 'on' : 'off'); } catch { /* keep in memory */ }
+	}
+	const hasEjee = $derived(Object.values(draft.blocks ?? {}).some((b) => b.library === 'ejee'));
+
+	/** Assignment order = EJEE syllabus order of each question's subtopic, per chapter. */
+	async function sortBySubtopic() {
+		if (draft.mode !== 'assignment' || !draft.sections[0]) return false;
+		const ids = draft.sections[0].blockIds;
+		const blocks = ids.map((id) => ({ ...draft.blocks[id], id }));
+		const keys = await loadOrderKeys(blocks);
+		const sorted = orderBySubtopic(blocks, keys).map((b) => b.id);
+		return builder.setAssignmentOrder(sorted);
+	}
+
+	async function doImport(allowDupes) {
 		if (!activeCart) return;
 		const r = builder.importFromCart(activeCart.items, { allowDupes });
 		importStatus = { added: r.added.length, skipped: r.skipped.length, cartName: activeCart.name, dupes: !allowDupes };
+		if (r.added.length && subtopicOrder && $builderStore.mode === 'assignment') {
+			try { await sortBySubtopic(); }
+			catch { importStatus = { ...importStatus, orderNote: 'Could not read EJEE subtopic order; kept cart order.' }; }
+		}
+	}
+	async function sortNow() {
+		const order = captureOrder();
+		try {
+			if (await sortBySubtopic()) showUndo({ kind: 'order', label: 'Ordered by EJEE subtopics', order });
+		} catch (e) {
+			importStatus = { error: `Could not read EJEE subtopic order: ${e.message}` };
+		}
 	}
 
 	function removeWithUndo(bid, label) {
@@ -252,7 +297,8 @@ import { cartStore } from '$lib/carts.js';
 		<span class="ident">Paper builder</span>
 		<div class="seg" role="group" aria-label="Preview mode">
 			<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => (previewMode = 'questions')}>Question Sheet</button>
-			<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
+			<button type="button" disabled={!hasArchiveQuestions} title="For processed question papers only. Use All-type Answer Sheet for EJEE questions." class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet (Question papers)</button>
+			<button type="button" class:active={previewMode === 'all-answers'} aria-pressed={previewMode === 'all-answers'} onclick={() => (previewMode = 'all-answers')}>All-type Answer Sheet</button>
 		</div>
 		<span class="docstatus" role="status">{empty ? 'Empty draft' : `${draft.mode === 'paper' ? 'Paper' : 'Assignment'} · ${nBlocks} blocks · ${num.total} numbers`}</span>
 		{#if undo}
@@ -360,6 +406,16 @@ import { cartStore } from '$lib/carts.js';
 				</div>
 				{#if draft.mode === 'paper'}
 					<p class="pl-sub hint">Imports group automatically — one section per question type.</p>
+				{:else}
+					<label class="subtopicrow" title="Questions of the same EJEE subtopic stay together, following the subtopic order of that chapter in EJEE. Word and PDF follow this order.">
+						<input type="checkbox" checked={subtopicOrder} onchange={(e) => setSubtopicOrder(e.currentTarget.checked)} />
+						Keep EJEE subtopic order
+					</label>
+					<label class="subtopicrow" title="Print the EJEE subtopic title above each group of its questions, in the preview, Word and PDF.">
+						<input type="checkbox" checked={topicTitles} onchange={(e) => setTopicTitles(e.currentTarget.checked)} />
+						Subtopic titles above questions
+					</label>
+					<button type="button" class="mini" disabled={!hasEjee || empty} onclick={sortNow}>Order by EJEE subtopics now</button>
 				{/if}
 				{#if importStatus}
 					<div class="status" role="status">
@@ -378,6 +434,7 @@ import { cartStore } from '$lib/carts.js';
 								<button type="button" class="mini" onclick={() => doImport(true)}>Import anyway</button>
 							{/if}
 						{/if}
+						{#if importStatus.orderNote}<span>{importStatus.orderNote}</span>{/if}
 					</div>
 				{/if}
 			</div>
@@ -504,6 +561,9 @@ import { cartStore } from '$lib/carts.js';
 		<div class="previewcol">
 			<div class="panehead">
 				<span>Preview</span>
+				{#if previewMode === 'all-answers'}
+					<label class="pl-sub"><input type="checkbox" bind:checked={includeAnswerSolutions} /> Include detailed solutions</label>
+				{/if}
 				<span class="previewmeta">
 					<label class="figctl" title="Diagram size — pages reflow live, print matches">
 						Fig
@@ -517,10 +577,15 @@ import { cartStore } from '$lib/carts.js';
 				</span>
 			</div>
 			<div class="previewscroll" bind:this={previewEl}>
+				{#if previewMode === 'answers' && order.some(e => e.library === 'ejee')}
+					<p class="pl-sub">EJEE questions are available in All-type Answer Sheet. This sheet includes processed question-paper questions only.</p>
+				{/if}
 				{#if previewMode === 'questions'}
-					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} figScale={figScale} />
+					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} figScale={figScale} showTopics={topicTitles} />
 				{:else}
 					<AnswerSheetPreview
+						allTypes={previewMode === 'all-answers'}
+						includeSolutions={includeAnswerSolutions}
 						title={draft.title} numbering={num} blocks={draft.blocks}
 						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed} font={sheetFont} figScale={figScale}
 						onOverride={(bid, i, t) => builder.setOverride(bid, i, t)}
@@ -926,6 +991,8 @@ import { cartStore } from '$lib/carts.js';
 		margin: -2px 0 8px;
 		font-size: 0.76rem;
 	}
+	.subtopicrow { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; font-size: 0.88rem; cursor: pointer; }
+	.subtopicrow input { margin: 0; }
 	.mini {
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-pill);

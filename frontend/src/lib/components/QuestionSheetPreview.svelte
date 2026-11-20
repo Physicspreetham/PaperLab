@@ -16,10 +16,11 @@
 	import { withTimeout, backoffDelay, pool, sleep, isUnsettled, sweepUnsettled } from '$lib/async.js';
 	import { bulkSeedPlan, applyBulkSeed } from '$lib/bulkSeed.js';
 	import { api } from '$lib/api.js';
+	import { loadOrderKeys, topicHeadings } from '$lib/subtopicOrder.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true, font = 'paperlab', figScale = 80, pattern = null } = $props();
+	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true, font = 'paperlab', figScale = 80, pattern = null, showTopics = true } = $props();
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -31,6 +32,17 @@
 	});
 
 	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.library || 'archive'}:${e.paperId}:${e.number}`).join(','));
+
+	// EJEE subtopic titles (assignment only): the leaf node name used in the EJEE app.
+	let topicKeys = $state({});
+	let topicGen = 0;
+	$effect(() => {
+		void idsKey;
+		if (mode !== 'assignment' || !showTopics || !ordered.some((e) => e.library === 'ejee')) return;
+		const gen = ++topicGen;
+		loadOrderKeys(ordered).then((keys) => { if (gen === topicGen && !dead) topicKeys = keys; });
+	});
+	const headings = $derived(mode === 'assignment' && showTopics ? topicHeadings(ordered, topicKeys) : new Map());
 
 	const paraIndex = $derived.by(() => {
 		const m = new Map();
@@ -223,7 +235,11 @@
 	const rows = $derived.by(() => {
 		const out = [{ id: 'doc', kind: 'doc', keepWithNext: true }];
 		if (mode === 'assignment') {
-			for (const e of ordered) out.push(...blockRows(e));
+			for (const e of ordered) {
+				const heading = headings.get(e.blockId);
+				if (heading) out.push({ id: `${e.blockId}:topic`, kind: 'topichead', title: heading, keepWithNext: true });
+				out.push(...blockRows(e));
+			}
 			return out;
 		}
 		for (const [si, s] of sections.entries()) {
@@ -290,6 +306,8 @@
 				</ul>
 			</div>
 		{/if}
+	{:else if def.kind === 'topichead'}
+		<p class="topichead">{def.title}</p>
 	{:else if def.kind === 'parahead'}
 		<p class="parahead">Paragraph {def.label}</p>
 	{:else if def.kind === 'loading'}
@@ -302,11 +320,25 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<Segments segments={[def.seg]} zoomable eager bare={bare} scaleBadge />
+		<div class="question-flow"><Segments segments={[def.seg]} zoomable eager bare={bare} scaleBadge /></div>
 	{/if}
 {/snippet}
 
 <style>
+	/* Every paginated segment shares the stem's text edge, including
+	   paragraphs after figures and options continued on another page. */
+	.question-flow {
+		margin-left: 2.75em;
+		min-width: 0;
+	}
+	.question-flow :global(.md > ol) {
+		padding-left: 0;
+	}
+	.question-flow :global(.segs .pl-optrow),
+	.question-flow :global(.segs p.pl-opt) {
+		margin-left: 0;
+	}
+
 	.dochead {
 		text-align: center;
 		border-bottom: 2px solid #111;
@@ -360,6 +392,14 @@
 		padding-left: 18px;
 		font-size: 0.78rem;
 		line-height: 1.55;
+	}
+	.topichead {
+		margin: 14px 0 8px;
+		padding-bottom: 3px;
+		border-bottom: 1.5px solid #111;
+		font-weight: 700;
+		font-size: 1rem;
+		color: #111;
 	}
 	.parahead {
 		margin: 2px 0 6px;

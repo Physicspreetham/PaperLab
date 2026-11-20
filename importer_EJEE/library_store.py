@@ -38,9 +38,41 @@ def connect():
     return c
 
 
+def _order_file():
+    return store()['root'] / 'collection_order.json'
+
+
+def saved_order():
+    path = _order_file()
+    try:
+        value = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
+    except (OSError, ValueError):
+        return []
+    return [i for i in value if isinstance(i, int)]
+
+
 def papers():
     with connect() as c:
-        return [dict(r) for r in c.execute('SELECT p.id,p.paper_name title,p.source_institute book,p.status,count(q.id) questions FROM papers p LEFT JOIN questions q ON q.paper_id=p.id GROUP BY p.id ORDER BY p.source_institute,p.id')]
+        rows = [dict(r) for r in c.execute('SELECT p.id,p.paper_name title,p.source_institute book,p.status,count(q.id) questions FROM papers p LEFT JOIN questions q ON q.paper_id=p.id GROUP BY p.id ORDER BY p.source_institute,p.id')]
+    rank = {pid: i for i, pid in enumerate(saved_order())}
+    # Stable: collections never ordered by hand keep their default place, after the ordered ones.
+    rows.sort(key=lambda r: rank.get(r['id'], len(rank)))
+    return rows
+
+
+def set_order(ids):
+    """Persist the manual display order of collections (any unknown id is rejected)."""
+    if not isinstance(ids, list) or len(set(ids)) != len(ids) or any(type(i) is not int for i in ids):
+        raise ValueError('Invalid collection order.')
+    with connect() as c:
+        known = {r[0] for r in c.execute('SELECT id FROM papers')}
+    if not set(ids) <= known:
+        raise ValueError('The order refers to a collection that no longer exists.')
+    path = _order_file()
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps(ids), encoding='utf-8')
+    tmp.replace(path)
+    return {'ids': ids}
 
 
 def rename(paper_id, title):
@@ -91,6 +123,41 @@ def metadata(paper_id):
         row=c.execute('SELECT id,paper_name title,source_institute institute,exam_type exam,status FROM papers WHERE id=?',(paper_id,)).fetchone()
         if not row:raise FileNotFoundError('Imported EJEE collection not found')
         return dict(row)
+
+
+def order_keys(paper_id):
+    """Per question: its EJEE chapter and syllabus position below the chapter.
+
+    `sort` lists node positions root->leaf under the chapter (week, topic, subtopic),
+    which is the order of the subtopic codes in the EJEE app. Questions without
+    preserved EJEE tags (AI-reclassified imports) are simply absent.
+    """
+    with connect() as c:
+        if not c.execute('SELECT 1 FROM papers WHERE id=?', (paper_id,)).fetchone():
+            raise FileNotFoundError('Imported EJEE collection not found')
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='ejee_source_tags'").fetchone():
+            return {}
+        rows = c.execute('SELECT q.question_number number, t.metadata FROM questions q '
+                         'JOIN ejee_source_tags t ON t.question_id=q.id WHERE q.paper_id=?', (paper_id,)).fetchall()
+    result = {}
+    for row in rows:
+        try:
+            resources = json.loads(row['metadata']).get('resources', [])
+        except ValueError:
+            continue
+        lineage = next((r['ancestry'] for r in resources if r.get('ancestry')), None)
+        if not lineage:
+            continue
+        path = list(reversed(lineage))  # stored leaf -> root
+        at = next((i for i, n in enumerate(path) if n.get('level') == 'chapter'), None)
+        chapter = path[at] if at is not None else None
+        below = path[at + 1:] if at is not None else path
+        result[row['number']] = {
+            'chapter_id': chapter['id'] if chapter else None,
+            'chapter_name': chapter['name'] if chapter else None,
+            'sort': [n.get('position') or 0 for n in below],
+            'leaf': {'id': path[-1]['id'], 'name': path[-1]['name']}}
+    return result
 
 
 def questions(paper_id,number=None):

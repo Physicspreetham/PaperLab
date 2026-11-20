@@ -66,6 +66,7 @@ export async function buildExportHtml(root, title) {
 		for (const el of clone.querySelectorAll('.dochead p')) wrap(el, 'DocSub');
 		for (const el of clone.querySelectorAll('p.seckind')) wrap(el, 'SecKind');
 		for (const el of clone.querySelectorAll('p.parahead')) wrap(el, 'ParaHead');
+		for (const el of clone.querySelectorAll('p.topichead')) wrap(el, 'TopicHead');
 		for (const h of clone.querySelectorAll('h4.solhead')) {
 			const p = document.createElement('p');
 			p.textContent = h.textContent;
@@ -100,10 +101,50 @@ export async function buildExportHtml(root, title) {
 		// so neighbouring paragraphs are siblings: the Word filter groups the
 		// A)-D) options into one row only when they sit side by side.
 		for (const w of [...clone.querySelectorAll('.prow, .md, .segs, .pl-optrow')]) w.replaceWith(...w.childNodes);
+		// Word consumes table cells rather than CSS grid. Preserve the key's
+		// five width units, including wider equation and matching cells.
+		for (const row of clone.querySelectorAll('.key-shell-row')) {
+			const table = document.createElement('table');
+			table.className = 'pl-key-table';
+			table.setAttribute('border', '1');
+			table.style.width = '100%';
+			const cols = document.createElement('colgroup');
+			for (let i = 0; i < 10; i++) {
+				const col = document.createElement('col'); col.style.width = i%2 ? '14%' : '6%'; cols.append(col);
+			}
+			table.append(cols);
+			const body = document.createElement('tbody'), line = document.createElement('tr');
+			let used = 0;
+			for (const shell of row.querySelectorAll('.key-shell')) {
+				const span = Math.max(1, Math.min(5, Number(shell.dataset.keySpan) || 1));
+				const number = document.createElement('td');
+				number.style.width = '6%'; number.style.verticalAlign = 'middle';
+				number.textContent = shell.querySelector('.key-number')?.textContent || '';
+				const cell = document.createElement('td');
+				cell.colSpan = span*2-1; cell.style.width = `${span * 20-6}%`;
+				cell.style.verticalAlign = 'middle'; cell.style.textAlign = 'center';
+				const value = shell.querySelector('.key-value');
+				if (value) cell.append(...value.childNodes);
+				line.append(number,cell); used += span;
+			}
+			if (used < 5) { const cell = document.createElement('td'); cell.colSpan = (5-used)*2; line.append(cell); }
+			body.append(line); table.append(body); row.replaceWith(table);
+		}
 		parts.push(clone.innerHTML);
 	}
 
-	const html = `<!doctype html><html><head><meta charset="utf-8"></head><body>${parts.join('\n')}</body></html>`;
+	// Pagination splits preview rows into pages. Rejoin their key tables for
+	// Word so it receives one continuous table and handles page breaks itself.
+	const content = document.createElement('div');
+	content.innerHTML = parts.join('\n');
+	for (const table of content.querySelectorAll('table.pl-key-table')) {
+		const previous = table.previousElementSibling;
+		if (previous?.matches('table.pl-key-table')) {
+			previous.querySelector('tbody').append(...table.querySelector('tbody').children);
+			table.remove();
+		}
+	}
+	const html = `<!doctype html><html><head><meta charset="utf-8"></head><body>${content.innerHTML}</body></html>`;
 	return { html, missing };
 }
 

@@ -232,3 +232,40 @@ def test_published_figure_can_be_recropped_from_archived_source_and_restored(tmp
     assert Image.open(folder/'qfig1.png').size == (170, 140)
     with pytest.raises(ValueError):figures.edit_figure(7, '3', 'qfig1.png', (.5, .1, .4, .9), 0, False)
     with pytest.raises(ValueError):figures.list_figures(7, '../x')
+
+
+def test_collection_order_is_saved_validated_and_applied(tmp_path, monkeypatch):
+    from importer_EJEE import library_store as library
+    target = fixture_target(tmp_path)
+    monkeypatch.setattr(library, 'store', lambda: {'root': tmp_path, 'db': target, 'outputs': tmp_path, 'data': tmp_path})
+    default = [p['id'] for p in library.papers()]
+    assert len(default) >= 2
+    wanted = list(reversed(default))
+    library.set_order(wanted)
+    assert [p['id'] for p in library.papers()] == wanted
+    library.set_order(wanted[:1])  # papers not in the saved list keep default order after it
+    assert [p['id'] for p in library.papers()][0] == wanted[0]
+    with pytest.raises(ValueError):library.set_order([default[0], default[0]])
+    with pytest.raises(ValueError):library.set_order([999])
+    (tmp_path / 'collection_order.json').write_text('not json')
+    assert [p['id'] for p in library.papers()] == default
+
+
+def test_order_keys_expose_chapter_and_syllabus_positions_in_ejee_order(tmp_path, monkeypatch):
+    from importer_EJEE import library_store as library
+    target = fixture_target(tmp_path)
+    monkeypatch.setattr(library, 'store', lambda: {'root': tmp_path, 'db': target, 'outputs': tmp_path, 'data': tmp_path})
+    def node(i, level, name, position): return {'id': i, 'level': level, 'name': name, 'position': position}
+    chain = lambda topic_pos, week_pos: [node(5, 'topic', 'T', topic_pos), node(4, 'week', 'W', week_pos),
+                                          node(3, 'chapter', 'Heat', 6), node(1, 'module', 'M', 3)]  # leaf -> root
+    with sqlite3.connect(target) as c:
+        qs = [r[0] for r in c.execute('SELECT id FROM questions WHERE paper_id=1 ORDER BY id LIMIT 3')]
+        numbers = [c.execute('SELECT question_number FROM questions WHERE id=?', (q,)).fetchone()[0] for q in qs]
+        c.execute('CREATE TABLE IF NOT EXISTS ejee_source_tags (question_id INTEGER PRIMARY KEY, metadata TEXT NOT NULL)')
+        c.execute('DELETE FROM ejee_source_tags')
+        c.execute('INSERT INTO ejee_source_tags VALUES (?,?)', (qs[0], json.dumps({'resources': [{'id': 1, 'ancestry': chain(2, 1)}]})))
+        c.execute('INSERT INTO ejee_source_tags VALUES (?,?)', (qs[1], json.dumps({'resources': [{'id': 2, 'ancestry': []}]})))
+    keys = library.order_keys(1)
+    assert keys[numbers[0]] == {'chapter_id': 3, 'chapter_name': 'Heat', 'sort': [1, 2], 'leaf': {'id': 5, 'name': 'T'}}
+    assert numbers[1] not in keys and numbers[2] not in keys
+    with pytest.raises(FileNotFoundError):library.order_keys(999)

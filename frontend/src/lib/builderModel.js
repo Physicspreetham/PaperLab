@@ -68,6 +68,17 @@ export function setDraftMode(draft,mode) {
 	return touch({...draft,mode,sections:[{id:newSectionId(),title:'Assignment',atype:'mixed',locked:true,blockIds}]});
 }
 
+/** Reorder an assignment's flat list. Must be exactly the same blocks; otherwise returns null. */
+export function setAssignmentOrder(draft, blockIds) {
+	if ((draft?.mode ?? 'paper') !== 'assignment' || !draft.sections?.[0]) return null;
+	const current = draft.sections[0].blockIds;
+	if (!Array.isArray(blockIds) || blockIds.length !== current.length
+		|| new Set(blockIds).size !== blockIds.length || !blockIds.every((id) => current.includes(id))) return null;
+	if (blockIds.every((id, i) => id === current[i])) return draft;
+	const sections = draft.sections.map((sec, i) => (i === 0 ? { ...sec, blockIds: [...blockIds] } : sec));
+	return touch({ ...draft, sections });
+}
+
 /** Normalize one cart/draft item into a block identity snapshot. Null when invalid. */
 export function toBlock(src) {
 	if (!src || typeof src !== 'object') return null;

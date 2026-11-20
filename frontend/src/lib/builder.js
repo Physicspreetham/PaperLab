@@ -26,6 +26,7 @@ import {
 	restoreBlock,
 	restoreSectionOrder,
 	setKeyOverride,
+	setAssignmentOrder,
 	validateDraft
 } from './builderModel.js';
 import { assignNumbers, flattenDraft } from './numbering.js';
@@ -119,6 +120,16 @@ export const builder = {
 			return r.draft;
 		});
 		return out;
+	},
+	/** Assignment only: set the flat order. Returns false when ids don't match the draft. */
+	setAssignmentOrder(ids) {
+		let ok = false;
+		builderStore.update((d) => {
+			const next = setAssignmentOrder(d, ids);
+			ok = next !== null;
+			return next ?? d;
+		});
+		return ok;
 	},
 	autoGroup() {
 		let grouped = false;
