@@ -15,16 +15,68 @@ import re
 import sqlite3
 import subprocess
 import time
+from uuid import uuid4
 
 from bootstrap import ROOT, REPO, activate
+
+
+class CropReviewRequired(RuntimeError):
+    """A bounded extraction attempt needs human crop/content review."""
+
+
+def crop_review_signature(cfg, group):
+    crops = [crop for crop in reviewed_crops(cfg) if crop['group'] == group]
+    return hashlib.sha256(('source-raster-v8:' + json.dumps(crops, sort_keys=True)).encode()).hexdigest()
+
+
+AUTO_ACCEPT_AFTER = 3
+
+
+def auto_accept_crop(run, group, filename, source, image, attempts):
+    """Stop a crop loop that cannot reach a clean edge: keep the best attempt.
+
+    Repeated model retries on a diagram that physically abuts prose (e.g. a
+    video frame whose arrows run under the statement) never converge and used to
+    park the whole import in manual review. The attempt with the fewest
+    edge-touching sides is kept, the remaining contact is recorded as confirmed
+    (auto_accepted=True keeps it visible/reviewable), and the figure is stored
+    as a run-level reviewed crop so figures() and resumes reproduce it exactly.
+    """
+    from raster_figures import render_reviewed_crop
+    index, best = min(enumerate(attempts), key=lambda pair: (len(pair[1]['edge_warnings']), -pair[0]))
+    entry = {'group': group, 'filename': filename, 'source_body_sha256': source['body_sha256'],
+             'source_pixel_box': best['requested_source_pixel_box'],
+             'confirmed_edge_warnings': best['edge_warnings'], 'auto_accepted': True,
+             'reason': 'Auto-accepted after ' + str(len(attempts)) + ' crop attempts; source ink still touches '
+                       + ', '.join(best['edge_warnings']) + '. Optional manual review.'}
+    figure, info = render_reviewed_crop(image, entry)
+    path = Path(run) / 'auto_crop_reviews.json'
+    records = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
+    same = lambda r: (r['group'], r['filename'], r['source_body_sha256']) == (group, filename, source['body_sha256'])
+    dump(path, [r for r in records if not same(r)] + [entry])
+    return figure, info
 
 
 def dump(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + '.tmp')
-    tmp.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding='utf-8')
-    tmp.replace(path)
+    tmp = path.with_name(f'.{path.name}.{uuid4().hex}.tmp')
+    try:
+        tmp.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding='utf-8')
+        for attempt in range(6):
+            try:
+                tmp.replace(path)
+                break
+            except PermissionError:
+                if os.name != 'nt' or attempt == 5:
+                    raise
+                time.sleep(0.1 * (2 ** attempt))
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except PermissionError:
+                pass
 
 
 def sha(path):
@@ -296,7 +348,14 @@ def normalize_rendering(tex):
     return re.sub(r'\\begin\{verbatim\}\s*\n?(.*?)\\end\{verbatim\}', program, tex, flags=re.DOTALL)
 
 
+def figure_references(qdir):
+    return {name for side in ('question', 'solution')
+            if (path := qdir / f'{side}.tex').is_file()
+            for name in re.findall(r'\\includegraphics(?:\[[^\]]*\])?\{figures/([^}]+)\}', path.read_text(encoding='utf-8'))}
+
+
 def validate_item(pid, number, has_solution):
+    from raster_figures import has_unconfirmed_edges
     import directory_manager
     qdir = directory_manager.get_question_dir(pid, number)
     errors = []
@@ -307,8 +366,10 @@ def validate_item(pid, number, has_solution):
             errors.append(f'{side}.tex missing'); continue
         text = path.read_text(encoding='utf-8')
         if '[UNREADABLE]' in text: errors.append(f'{side}: unreadable content requires review')
-        if side == 'solution' and has_solution and ('No solution provided.' in text or len(text.strip()) < 50):
-            errors.append('Mapped solution was replaced by placeholder/empty text')
+        if side == 'solution' and has_solution:
+            _, _, body = text.strip().partition('\n')
+            if not body.strip() or body.strip() == directory_manager.SOLUTION_PLACEHOLDER:
+                errors.append('Mapped solution was replaced by placeholder/empty text')
         for file in re.findall(r'\\includegraphics(?:\[[^\]]*\])?\{figures/([^}]+)\}', text):
             if not re.fullmatch(prefix + r'\d+\.png', file): errors.append(f'Invalid side/filename: {file}')
             if not (qdir / 'figures' / file).is_file(): errors.append(f'Missing figure {file}')
@@ -318,7 +379,7 @@ def validate_item(pid, number, has_solution):
     review_path=qdir/'figures'/'_raster_review.json'
     if review_path.exists():
         for filename,review in json.loads(review_path.read_text()).items():
-            if filename in refs and review['edge_warnings']:
+            if filename in refs and has_unconfirmed_edges(review):
                 errors.append(filename+': re-crop edge-touching source ink at '+', '.join(review['edge_warnings']))
     return errors
 
@@ -328,11 +389,12 @@ def extract_item(manifest, item, cfg, run):
     from langgraph.types import Command
     import database
     import tools_extractor as tools
-    from raster_figures import crop_figure
+    from raster_figures import crop_figure, nearby_clear_cuts, reviewed_source
     from PIL import Image
     from llm import get_llm, invoke_with_retry
     import directory_manager
     pid, number = manifest['paper_id'], item['number']
+    key_only = cfg.get('content_mode') == 'key'
     # These canvases are 200 dpi raster sources, unlike upstream vector PDFs.
     # Keep its crop algorithms but do not save a 600 dpi upsample of the pixels.
     tools._SAVE_DPI = 200
@@ -345,18 +407,32 @@ def extract_item(manifest, item, cfg, run):
     native = (REPO / 'prompts' / 'extractor_prompt.md').read_text(encoding='utf-8')
     override = (ROOT / 'prompts' / 'mapped_extractor.md').read_text(encoding='utf-8')
     if optimized:override+='\n\n'+INSTRUCTIONS
+    if key_only:
+        override += (
+            '\n\nQUESTIONS + KEY MODE overrides every instruction to transcribe a worked solution. '
+            'Transcribe the complete question and its diagrams. In solution_latex supply exactly one '
+            'line in the normal Answer format containing only the explicit source answer key. '
+            'Use source_answers first. If absent, look for an explicit final answer in the supplied '
+            'source text and images. Never derive an answer or include reasoning or solution figures. '
+            'If no explicit key exists, submit exactly no_solution_found.'
+        )
     allowed = {manifest['question_pdf']: item['question_pages']}
     if manifest['solution_pdf']: allowed[manifest['solution_pdf']] = item['solution_pages']
+    source_answers = [r['answer'] for r in item['question_rows'] if r['answer']]
     metadata = {'paper_id': pid, 'question_number': number, 'source_label': item['question_rows'][0]['title'],
                 'allowed_pages': allowed, 'has_mapped_solution': bool(item['solution_rows']),
-                'source_answers': [r['answer'] for r in item['question_rows'] if r['answer']],
+                'source_answers': source_answers,
                 'source_question_text': [r['question'] for r in item['question_rows'] if r['question']],
-                'source_solution_text': [r['solution'] for r in item['question_rows'] if r['solution']],
+                'source_solution_text': [r['solution'] for r in item['question_rows'] if r['solution']
+                                         and not (key_only and source_answers)],
                 'source_qtype': [r['qtype'] for r in item['question_rows'] if r['qtype']]}
     metadata['reviewed_diagrams'] = reuse_reviewed(cfg, item, pid, number)
+    reviewed_filenames = {diagram['filename'] for diagram in metadata['reviewed_diagrams']}
     messages = [SystemMessage(content=native + '\n\n' + override), HumanMessage(content=json.dumps(metadata, ensure_ascii=False))]
     # Existing resource mapping supplies the images immediately; no searching/indexing calls.
     for side in ['question', 'solution']:
+        if side == 'solution' and key_only and metadata['source_answers']:
+            continue
         for row, page in zip(item[f'{side}_rows'], item[f'{side}_pages']):
             messages.append(HumanMessage(content=[{'type': 'text', 'text': f'{side.upper()} page {page}, resource {row["id"]}; already body-cropped, no key-sheet assumption.'},
                                                     tools.img_block(row['asset_evidence']['body_png'], tools.PAGE_PX)]))
@@ -364,23 +440,51 @@ def extract_item(manifest, item, cfg, run):
     saved = set(); t0 = time.time()
     log = run / 'traces' / f'{number}.json'
     max_turns=min(cfg.get('max_turns_per_question',36),cfg.get('cost_max_turns_per_question',12)) if optimized else cfg.get('max_turns_per_question',36)
-    for turn in range(max_turns):
+    crop_attempts = defaultdict(int)
+    attempt_log = defaultdict(list)
+    clear_figures = set()
+    # Reserve a few extra calls for figure-heavy questions that are making
+    # progress. Repeated crops of the same filename do not earn more calls.
+    max_extra_turns = 6 if optimized else 0
+    calls_made = 0
+    for turn in range(max_turns + max_extra_turns):
+        extra_turns = min(max_extra_turns, max(0, len(clear_figures) - 2))
+        if turn >= max_turns + extra_turns:
+            break
         response = invoke_with_retry(llm, messages)
+        calls_made += 1
         usage = response.usage_metadata or {}
         database.log_token_usage(pid, 'extractor', input_tokens=usage.get('input_tokens', 0),
                                  cache_read=(usage.get('input_token_details') or {}).get('cache_read', 0),
                                  output_tokens=usage.get('output_tokens', 0),
                                  reasoning_tokens=(usage.get('output_token_details') or {}).get('reasoning', 0))
         messages.append(response)
+        previews = []
         for call in response.tool_calls or []:
             args = dict(call['args']); name = call['name']
+            if name in ('assisted_crop', 'exact_crop'):
+                if args.get('output_filename') in reviewed_filenames:
+                    messages.append(ToolMessage(
+                        content='The verified source crop already exists. Reference it without recropping.',
+                        tool_call_id=call['id']))
+                    continue
+                key = (args.get('output_filename', ''), args.get('page_number'),
+                       tuple(args.get(k) for k in ('x', 'y', 'width', 'height')))
+                crop_attempts[key] += 1
+                if crop_attempts[key] > 2:
+                    dump(log, {'turns': turn+1, 'messages': [clean_message(m) for m in messages]})
+                    raise CropReviewRequired(f'{number}/{key}: repeated crop attempts; review the source before retrying')
             try:
                 if name not in by_name: raise ValueError('Tool not allowed')
                 if name == 'submit_question':
                     args['latex_content'] = strip_problem_heading(args['latex_content'], source_heading(item))
                 if name in ('submit_question', 'submit_solution'):
+                    if key_only and name == 'submit_solution':
+                        args['latex_content'] = key_transcription(args['latex_content'], bool(source_answers))
                     args['latex_content'] = normalize_rendering(args['latex_content'])
                 if name=='submit_pair':
+                    if key_only:
+                        args['solution_latex'] = key_transcription(args['solution_latex'], bool(source_answers))
                     args['question_latex']=normalize_rendering(strip_problem_heading(args['question_latex'],source_heading(item)))
                     args['solution_latex']=normalize_rendering(args['solution_latex'])
                 if 'paper_id' in args and args['paper_id'] != pid: raise ValueError('Wrong paper ID')
@@ -390,23 +494,28 @@ def extract_item(manifest, item, cfg, run):
                         raise ValueError('PDF/page is outside this mapped question')
                 if name in ('assisted_crop', 'exact_crop'):
                     prefix = 'qfig' if args['pdf_path'] == manifest['question_pdf'] else 'sfig'
+                    if key_only and prefix == 'sfig':
+                        raise ValueError('Only question diagrams are allowed in Questions + Key mode')
                     if not re.fullmatch(prefix + r'\d+\.png', args.get('output_filename', '')):
                         raise ValueError('Use the correct side and stable qfigN.png/sfigN.png filename')
-                if name in ('get_page_image', 'assisted_crop', 'exact_crop'):
+                if optimized and name in ('assisted_crop', 'exact_crop'):
+                    # Both mapped crop tools operate on the original source canvas.
+                    # Do not invoke PDF crop heuristics or their conflicting feedback.
+                    from raster_figures import clear_crop_edges
+                    side = 'question' if args['pdf_path'] == manifest['question_pdf'] else 'solution'
+                    idx = item[f'{side}_pages'].index(args['page_number'])
+                    body = item[f'{side}_rows'][idx]['asset_evidence']['body_png']
+                    box = [args[k] for k in ('x', 'y', 'width', 'height')]
+                    with Image.open(body) as source:
+                        box = clear_crop_edges(source, box)
+                    result = 'Saved ' + args['output_filename'] + '. Original source-pixel crop. final box: ' + json.dumps(box)
+                elif name in ('get_page_image', 'assisted_crop', 'exact_crop'):
                     result = by_name[name].invoke({'name': name, 'args': args, 'id': call['id'], 'type': 'tool_call'})
                 else:
                     result = by_name[name].invoke(args)
-                if isinstance(result, Command):
-                    replies=result.update.get('messages', [])
-                    # Raster crop preview below supersedes the PDF tool preview;
-                    # sending both images on every retry wastes vision tokens.
-                    messages.extend([m for m in replies if not isinstance(m,HumanMessage)] if name in ('assisted_crop','exact_crop') else replies)
-                else:
-                    messages.append(ToolMessage(content=str(result), tool_call_id=call['id']))
-                    if name in ('submit_question', 'submit_solution') and str(result) == 'saved': saved.add(name)
-                    if name=='submit_pair' and str(result)=='saved':saved.update(('submit_question','submit_solution'))
+                replies = result.update.get('messages', []) if isinstance(result, Command) else [
+                    ToolMessage(content=str(result), tool_call_id=call['id'])]
                 if name in ('assisted_crop','exact_crop'):
-                    replies=result.update.get('messages',[]) if isinstance(result,Command) else []
                     reply='\n'.join(m.content for m in replies if isinstance(m,ToolMessage) and isinstance(m.content,str)) or str(result)
                     final=re.search(r'final box: (\[[^\]]+\])',reply)
                     if final and reply.startswith('Saved '):
@@ -415,26 +524,65 @@ def extract_item(manifest, item, cfg, run):
                         body=item[f'{side}_rows'][idx]['asset_evidence']['body_png']
                         qdir=directory_manager.get_question_dir(pid,number)
                         dest=qdir/'figures'/args['output_filename']
-                        with Image.open(body) as im:preview,review=crop_figure(im,json.loads(final[1]))
+                        with Image.open(body) as im:
+                            preview, review = crop_figure(im, json.loads(final[1]))
+                            cuts = nearby_clear_cuts(im, review) if review['edge_warnings'] else {}
+                        dest.parent.mkdir(parents=True, exist_ok=True)
                         preview.save(dest,format='PNG')
                         review_path=qdir/'figures'/'_raster_review.json'
                         reviews=json.loads(review_path.read_text()) if review_path.exists() else {}
-                        reviews[args['output_filename']]=review;dump(review_path,reviews)
-                        note=('RE-CROP REQUIRED: source ink touches '+', '.join(review['edge_warnings'])+'. Expand those edges to include the complete diagram/labels, or tighten past foreign text. White output padding does not restore missing pixels.' if review['edge_warnings'] else 'Raster edges have clearance. Compare with the full source: exclude statement fragments and include every dimension label.')
+                        reviews[args['output_filename']]=review
+                        auto_note = ''
+                        if review['edge_warnings']:
+                            attempt_log[args['output_filename']].append(review)
+                            if len(attempt_log[args['output_filename']]) >= AUTO_ACCEPT_AFTER:
+                                with Image.open(body) as im:
+                                    preview, review = auto_accept_crop(run, item['group'], args['output_filename'],
+                                        item[f'{side}_rows'][idx]['asset_evidence'], im, attempt_log[args['output_filename']])
+                                preview.save(dest, format='PNG')
+                                reviews[args['output_filename']] = review
+                                reviewed_filenames.add(args['output_filename'])
+                                cuts = {}
+                                auto_note = ('AUTO-ACCEPTED after repeated attempts: the best crop is kept and flagged for optional review. '
+                                             'It is final; do not crop this figure again. Reference it and submit the transcription now.')
+                        dump(review_path,reviews)
+                        if not review['edge_warnings'] or auto_note:
+                            clear_figures.add(args['output_filename'])
+                        note=('RE-CROP REQUIRED: source ink touches '+', '.join(review['edge_warnings'])+'. The automatic search found no nearby clear cut on those edges. Inspect the full source image and move the failing edge to a visible blank gap. Keep the complete diagram and exclude prose.' if review['edge_warnings'] else 'Raster edges have clearance. Compare with the full source: exclude statement fragments and include every dimension label. If correct, submit the transcription now.')
+                        if auto_note:
+                            note = auto_note
+                        if cuts:
+                            note += (' Blank cut candidates (absolute normalized x or y, 0–1000): '
+                                     + json.dumps(cuts) + '. Choose only a cut that keeps every diagram element. '
+                                     'For right/bottom cuts, calculate width/height from the chosen absolute edge.')
                         if optimized:
                             from efficient_extractor import prune_old_preview
                             messages=[m.model_copy(update={'content':prune_old_preview(m.content,args['output_filename'])}) if isinstance(m,HumanMessage) else m for m in messages]
-                        messages.append(HumanMessage(content=[{'type':'text','text':args['output_filename']+': '+note},tools.img_block(dest,tools.CROP_PX)]))
+                        previews.append(HumanMessage(content=[{'type':'text','text':args['output_filename']+': '+note},tools.img_block(dest,tools.CROP_PX)]))
+                messages.extend(m for m in replies if not isinstance(m, HumanMessage))
+                previews.extend(m for m in replies if isinstance(m, HumanMessage) and name not in ('assisted_crop', 'exact_crop'))
+                if name in ('submit_question', 'submit_solution') and str(result) == 'saved':
+                    saved.add(name)
+                if name == 'submit_pair' and str(result) == 'saved':
+                    saved.update(('submit_question', 'submit_solution'))
             except Exception as exc:
                 messages.append(ToolMessage(content=f'Error: {type(exc).__name__}: {exc}', tool_call_id=call['id']))
+        messages.extend(previews)
         dump(log, {'profile':PROFILE if optimized else 'legacy-pdf','turns': turn+1, 'elapsed_sec': time.time()-t0, 'messages': [clean_message(m) for m in messages]})
         if len(saved) == 2:
-            errors = validate_item(pid, number, bool(item['solution_rows']))
+            qdir = directory_manager.get_question_dir(pid, number)
+            referenced = figure_references(qdir)
+            for path in (qdir / 'figures').glob('*.png'):
+                if re.fullmatch(r'[qs]fig\d+\.png', path.name) and path.name not in referenced and path.name not in reviewed_filenames:
+                    retired = run / 'unused_crops' / number / path.name
+                    retired.parent.mkdir(parents=True, exist_ok=True)
+                    path.replace(retired)
+            errors = validate_item(pid, number, bool(item['solution_rows']) and not key_only)
             if not errors: return {'ok': True, 'profile':PROFILE if optimized else 'legacy-pdf','turns': turn+1, 'elapsed_sec': round(time.time()-t0, 2)}
             messages.append(HumanMessage(content='Completion check failed; correct with same IDs: ' + '; '.join(errors)))
         elif not response.tool_calls:
             messages.append(HumanMessage(content='Finish this mapped item with submit_pair.' if optimized else 'Finish this mapped item by calling both submit_question and submit_solution. Do not invent missing solutions.'))
-    raise RuntimeError(f'{number}: {max_turns}-call cost limit reached; trace and usage saved for crop/content review. No incomplete question is published.')
+    raise CropReviewRequired(f'{number}: {calls_made}-call cost limit reached; trace and usage saved for crop/content review. No incomplete question is published.')
 
 
 def extract(cfg, run):
@@ -443,13 +591,24 @@ def extract(cfg, run):
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
     pid = manifest['paper_id']; t0 = time.time()
     database.set_paper_status(pid, 'extracting')
+    needs_review = []
     for item in manifest['items']:
         number = item['number']
-        if progress['questions'].get(number, {}).get('ok') and not validate_item(pid, number, bool(item['solution_rows'])):
+        signature = crop_review_signature(cfg, item['group'])
+        previous = progress['questions'].get(number, {})
+        if previous.get('needs_review') and previous.get('review_signature') == signature:
+            needs_review.append(number)
+            continue
+        has_solution = bool(item['solution_rows']) and cfg.get('content_mode') != 'key'
+        if progress['questions'].get(number, {}).get('ok') and not validate_item(pid, number, has_solution):
             continue
         print(f'Extracting {number} ({len(item["solution_rows"])} solution parts)', flush=True)
         try:
             progress['questions'][number] = extract_item(manifest, item, cfg, run)
+        except CropReviewRequired as exc:
+            progress['questions'][number] = {'ok': False, 'needs_review': True,
+                'review_signature': signature, 'error': str(exc)}
+            needs_review.append(number)
         except Exception as exc:
             progress['questions'][number] = {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}
             database.set_paper_status(pid, 'failed', progress['questions'][number]['error'], time.time()-t0)
@@ -457,6 +616,10 @@ def extract(cfg, run):
             raise
         dump(run / 'progress.json', progress)
         print(f'{number}: {progress["questions"][number]}', flush=True)
+    if needs_review:
+        message = 'Questions ' + ', '.join(needs_review) + ': crop/content review required. Saved conversions will be reused. Check the source diagrams and update the reviewed crops for these questions before resuming.'
+        database.set_paper_status(pid, 'failed', message, time.time()-t0)
+        raise CropReviewRequired(message)
     elapsed = sum(r.get('elapsed_sec', 0) for r in progress['questions'].values())
     database.set_paper_status(pid, 'done', elapsed_sec=elapsed)
     database.mark_paper_archived(pid)
@@ -472,21 +635,43 @@ def valid_classification(report):
 
 def reviewed_crops(cfg):
     explicit=json.loads((ROOT / cfg['reviewed_crops']).read_text(encoding='utf-8')) if cfg.get('reviewed_crops') else []
+    local = ROOT / cfg['run_dir'] / 'manual_crop_reviews.json' if cfg.get('run_dir') else None
+    if local and local.is_file():
+        manual = json.loads(local.read_text(encoding='utf-8'))
+        keys = {(r['group'], r['filename'], r['source_body_sha256']) for r in manual}
+        explicit = manual + [r for r in explicit if (r['group'], r['filename'], r['source_body_sha256']) not in keys]
+    auto = ROOT / cfg['run_dir'] / 'auto_crop_reviews.json' if cfg.get('run_dir') else None
+    if auto and auto.is_file():
+        keys = {(r['group'], r['filename'], r['source_body_sha256']) for r in explicit}
+        explicit = explicit + [r for r in json.loads(auto.read_text(encoding='utf-8'))
+                               if (r['group'], r['filename'], r['source_body_sha256']) not in keys]
     bundled=ROOT/'reviewed_figure_crops.json'
     defaults=json.loads(bundled.read_text(encoding='utf-8')) if bundled.exists() else []
     keys={(r['group'],r['filename'],r['source_body_sha256']) for r in explicit}
     return explicit+[r for r in defaults if (r['group'],r['filename'],r['source_body_sha256']) not in keys]
 
 
+def key_transcription(value, has_source_answer):
+    value = value.strip()
+    if value == 'no_solution_found' and not has_source_answer:
+        return value
+    if (len(value.splitlines()) != 1 or '\\includegraphics' in value
+            or not re.fullmatch(r'\\textbf\{Answer:\s*[^\n]+\}', value, re.I)):
+        raise ValueError('Submit only the source Answer line or no_solution_found')
+    return value
+
+
 def reuse_reviewed(cfg, item, pid, number):
     """Reuse only reviewed isolated rectangles whose source pixel hash still matches."""
     from PIL import Image
-    from raster_figures import crop_figure
+    from raster_figures import has_unconfirmed_edges, render_reviewed_crop
     import directory_manager
     reused = []
+    raster_reviews = {}
     for crop in reviewed_crops(cfg):
         if crop['group'] != item['group']: continue
         for side in ('question', 'solution'):
+            if side == 'solution' and cfg.get('content_mode') == 'key': continue
             if not crop['filename'].startswith('qfig' if side == 'question' else 'sfig'): continue
             for row,page in zip(item[f'{side}_rows'], item[f'{side}_pages']):
                 ev = row['asset_evidence']
@@ -496,63 +681,115 @@ def reuse_reviewed(cfg, item, pid, number):
                     b = crop['source_pixel_box']
                     if not (0 <= b[0] < b[2] <= im.width and 0 <= b[1] < b[3] <= im.height): raise ValueError('Invalid reviewed diagram bounds')
                     qdir = directory_manager.ensure_question_dir(pid, number)
-                    figure,info=crop_figure(im,b,pixel_box=True)
-                    if info['edge_warnings']:raise ValueError('Reviewed diagram still touches its source crop edges')
+                    figure,info=render_reviewed_crop(im,crop)
+                    if has_unconfirmed_edges(info):raise ValueError('Reviewed diagram still touches its source crop edges')
                     figure.save(qdir / 'figures' / crop['filename'])
                 reused.append({'filename': crop['filename'], 'side': side, 'page': page, 'resource_id': row['id'], 'review': crop['reason'],'raster_review':info})
+                raster_reviews[crop['filename']] = info
+    if raster_reviews:
+        review_path = directory_manager.get_question_dir(pid, number) / 'figures' / '_raster_review.json'
+        existing = json.loads(review_path.read_text(encoding='utf-8')) if review_path.exists() else {}
+        dump(review_path, {**existing, **raster_reviews})
     return reused
 
 
 def classify(cfg, run):
-    # Execute upstream Node 3 unchanged. No EJEE difficulty/tags enter this stage.
+    # Preserve source classifications by default; AI classification is opt-in.
     import database
     import run_topics as topic_runner
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
+    if cfg.get('tagging_mode', 'source') == 'source':
+        from importer_EJEE.source_tagging import preserve
+        from contextlib import closing
+        with closing(database.get_connection()) as connection:
+            with connection:
+                for item in manifest['items']:
+                    number = item['number']
+                    if not progress['questions'].get(number, {}).get('ok'):
+                        raise ValueError('Extraction must finish first')
+                    # Use this transaction's connection. get_question_id() opens
+                    # another writer via init_db(), deadlocking our own writes.
+                    row = connection.execute('SELECT id FROM questions WHERE paper_id=? AND question_number=?',
+                                             (manifest['paper_id'], number)).fetchone()
+                    if row is None: raise ValueError(f'Question {number} missing from import database')
+                    metadata = preserve(connection, row[0], item)
+                    progress['node3'][number] = {'ok': True, 'mode': 'source', 'source_metadata': metadata}
+        manifest['config']['tagging_mode'] = 'source'
+        dump(run / 'manifest.json', manifest)
+        dump(run / 'progress.json', progress)
+        print('Original EJEE tagging preserved; no classification API calls.', flush=True)
+        return
     # Newer PaperLab uses an explicit (code,path) catalogue; older upstream
     # versions construct their numbered reference internally. Never pass
     # display strings where the current classifier expects code/path tuples.
     catalog = topic_runner.build_topic_catalog() if hasattr(topic_runner, 'build_topic_catalog') else None
+    incomplete = []
     for item in manifest['items']:
         number = item['number']
         if not progress['questions'].get(number, {}).get('ok'): raise ValueError('Extraction must finish first')
         previous = progress['node3'].get(number, {})
+        if number in cfg.get('skip_classification_questions', ()) and not valid_classification(previous):
+            progress['node3'][number] = {**previous, 'ok': False, 'skipped': True}
+            dump(run / 'progress.json', progress)
+            continue
         if valid_classification(previous):
             previous['ok'] = True
             dump(run / 'progress.json', progress)
             continue
-        report = topic_runner.classify_question(manifest['paper_id'], number, catalog)
-        report['ok'] = bool(report.get('ok') and valid_classification(report))
-        progress['node3'][number] = report
-        dump(run / 'progress.json', progress)
+        for attempt in range(2):
+            report = topic_runner.classify_question(manifest['paper_id'], number, catalog)
+            report['ok'] = bool(report.get('ok') and valid_classification(report))
+            progress['node3'][number] = report
+            dump(run / 'progress.json', progress)
+            if report['ok']: break
         print(f'Node 3 {number}: {report}', flush=True)
-        if not report['ok']: raise RuntimeError('Node 3 output incomplete; retry classify after inspection')
+        if not report['ok']: incomplete.append(number)
         time.sleep(1)
+    if incomplete:
+        raise RuntimeError('Classification needs review for questions ' + ', '.join(incomplete) +
+                           '. Two attempts per question were made; other classifications are saved. Resume retries only incomplete questions.')
+
+
+def accepted_crop_calls(messages):
+    pending, accepted = [], {}
+    for message in messages:
+        if message['type'] == 'ai':
+            pending = list(message.get('tool_calls') or [])
+        elif message['type'] == 'tool' and pending:
+            reply_id = message.get('tool_call_id')
+            # Legacy traces without IDs recorded results in call order.
+            index = next((i for i, call in enumerate(pending) if call.get('id') == reply_id), None) if reply_id else 0
+            if index is None:
+                continue
+            call = pending.pop(index)
+            text = message['content']
+            if call['name'] not in ('assisted_crop', 'exact_crop') or not isinstance(text, str) or not text.startswith('Saved '):
+                continue
+            match = re.search(r'final box: (\[[^\]]+\])', text)
+            if match:
+                accepted[call['args']['output_filename']] = (call, json.loads(match[1]))
+    return accepted
 
 
 def figures(cfg, run):
     """Export accepted raster boxes from original pixels, without PDF upsampling."""
     import math
     from PIL import Image
-    from raster_figures import crop_figure
+    from raster_figures import crop_figure, has_unconfirmed_edges, render_reviewed_crop
     import directory_manager
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     exported = []
+    issues = []
     for item in manifest['items']:
         trace = json.loads((run / 'traces' / f'{item["number"]}.json').read_text(encoding='utf-8'))
-        pending, accepted = [], {}
-        for message in trace['messages']:
-            if message['type'] == 'ai': pending.extend(message.get('tool_calls') or [])
-            elif message['type'] == 'tool' and pending:
-                call = pending.pop(0)
-                if call['name'] not in ('assisted_crop', 'exact_crop'): continue
-                text = message['content']
-                match = re.search(r'final box: (\[[^\]]+\])', text)
-                if match and not str(text).startswith('Error:'):
-                    accepted[call['args']['output_filename']] = (call, json.loads(match[1]), text)
+        accepted = accepted_crop_calls(trace['messages'])
         qdir = directory_manager.get_question_dir(manifest['paper_id'], item['number'])
+        referenced = figure_references(qdir) if (qdir / 'question.tex').is_file() else None
         evidence = {}
-        for filename, (call, box, text) in accepted.items():
+        for filename, (call, box) in accepted.items():
+            if referenced is not None and filename not in referenced:
+                continue
             args = call['args']
             side = 'question' if args['pdf_path'] == manifest['question_pdf'] else 'solution'
             index = item[f'{side}_pages'].index(args['page_number'])
@@ -564,10 +801,12 @@ def figures(cfg, run):
                 px = [max(0, math.floor((x-1)*im.width/1000)), max(0, math.floor((y-1)*im.height/1000)),
                       min(im.width, math.ceil((x+w+1)*im.width/1000)), min(im.height, math.ceil((y+h+1)*im.height/1000))]
                 review = next((r for r in reviewed_crops(cfg) if r['group'] == item['group'] and r['filename'] == filename and r['source_body_sha256'] == source['body_sha256']), None)
-                if review: px = review['source_pixel_box']
-                cropped,review_info = crop_figure(im,px,pixel_box=True)
-                if review_info['edge_warnings']:
-                    raise ValueError(f'{item["number"]}/{filename}: source ink touches {review_info["edge_warnings"]}; review crop before publishing')
+                cropped,review_info = render_reviewed_crop(im,review) if review else crop_figure(im,px,pixel_box=True)
+                if has_unconfirmed_edges(review_info):
+                    issues.append({'question': item['number'], 'filename': filename,
+                                   'source_body_sha256': source['body_sha256'],
+                                   'source_body': source['body_png'], **review_info})
+                    continue
                 dest = qdir / 'figures' / filename
                 cropped.save(dest, format='PNG')
                 evidence[filename] = {'source_body': source['body_png'], 'source_sha256': source['body_sha256'],
@@ -584,8 +823,15 @@ def figures(cfg, run):
                 'method': 'reviewed source-pixel crop reused by exact image hash; trimmed and padded', 'review_override': crop}
         if evidence:
             dump(qdir / 'figures' / '_import_provenance.json', evidence)
+            review_path = qdir / 'figures' / '_raster_review.json'
+            reviews = json.loads(review_path.read_text(encoding='utf-8')) if review_path.exists() else {}
+            dump(review_path, {**reviews, **{name: value for name, value in evidence.items()}})
             exported.extend({'question': item['number'], 'filename': k, **v} for k,v in evidence.items())
     dump(run / 'figure_export.json', exported)
+    dump(run / 'crop_reviews.json', issues)
+    if issues:
+        names = ', '.join(f'{issue["question"]}/{issue["filename"]}' for issue in issues)
+        raise CropReviewRequired(f'Crop review required: {names}. All diagrams were checked; details saved in crop_reviews.json. Converted questions are saved. No incomplete collection is published.')
     print(f'Exported {len(exported)} accepted figures from original pixels without upsampling.', flush=True)
 
 
@@ -648,8 +894,11 @@ def verify(cfg, run):
         count = c.execute('SELECT count(*) FROM questions WHERE paper_id=?', (pid,)).fetchone()[0]
         if count != len(manifest['items']): errors.append('Question count mismatch')
         for item in manifest['items']:
-            errors.extend(f'{item["number"]}: {e}' for e in validate_item(pid, item['number'], bool(item['solution_rows'])))
-            if not progress['node3'].get(item['number'], {}).get('ok'): errors.append(f'{item["number"]}: Node 3 incomplete')
+            has_solution = bool(item['solution_rows']) and cfg.get('content_mode') != 'key'
+            errors.extend(f'{item["number"]}: {e}' for e in validate_item(pid, item['number'], has_solution))
+            classification = progress['node3'].get(item['number'], {})
+            allowed_skip = item['number'] in cfg.get('skip_classification_questions', ()) and classification.get('skipped')
+            if not classification.get('ok') and not allowed_skip: errors.append(f'{item["number"]}: Node 3 incomplete')
             for side in ('question', 'solution'):
                 for row in item[f'{side}_rows']:
                     ev = row['asset_evidence']

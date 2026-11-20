@@ -35,3 +35,22 @@ No additional AI calls were needed for this repair.
 Validation: 33 focused tests passed, including exact content-pixel preservation,
 detached labels, colour, blank-margin removal, edge-contact detection and invalid
 bounds. The six-question worker collection passed its native verification again.
+
+## Why Resume kept failing on the same questions (second repair)
+
+Analysis of a failed 144-question run (13 questions in review) found that most
+"edge touching" verdicts were false, produced by the ink detector rather than the
+model's boxes:
+
+1. Every EJEE question page has a faint full-height 2px vertical divider between
+   the question and the options. Only horizontal rules were ignored, so any box
+   crossing the page centre reported ink on top *and* bottom, whatever the model did.
+2. Black-board solution pages (video frames) were scanned as "dark = ink" on a
+   white-page assumption, so the whole canvas was ink and all four edges always touched.
+
+`content_ink` now drops thin page-spanning vertical rules and detects dark pages
+(background read from the page border; ink = clearly different from it). Clearance
+padding uses the page background colour. For diagrams that truly abut prose, after 3
+failed attempts the best attempt is auto-accepted (`auto_crop_reviews.json`, flagged
+`auto_accepted`, still reviewable) instead of parking the whole import.
+The crop review signature was bumped (v8) so earlier needs-review questions retry on Resume.
