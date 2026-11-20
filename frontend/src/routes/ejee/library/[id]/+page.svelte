@@ -6,6 +6,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
 	import AddToCart from '$lib/components/AddToCart.svelte';
+	import FigurePanel from '$lib/components/FigurePanel.svelte';
 	import { carts, cartStore, activeCart } from '$lib/carts.js';
 	import { itemKey } from '$lib/cartModel.js';
 	let cartMessage = $state('');
@@ -25,6 +26,7 @@
 	}
 	let paper = $state(null), questions = $state([]), number = $state(''), loading = $state(true), error = $state('');
 	let showSolution = $state(false);
+	let editFigures = $state(false), figureRev = $state(0);
 	let renaming = $state(false), titleDraft = $state(''), titleError = $state(''), titleBusy = $state(false);
 	function startRename() { titleDraft = paper.title; titleError = ''; renaming = true; }
 	async function saveTitle() {
@@ -36,7 +38,7 @@
 	}
 	const current = $derived(questions.find(q => q.number === number));
 	const index = $derived(questions.findIndex(q => q.number === number));
-	function move(step) { number = questions[index + step]?.number || number; showSolution = false; }
+	function move(step) { number = questions[index + step]?.number || number; showSolution = false; editFigures = false; }
 	onMount(async () => {
 		try {
 			const result = await api.getImportedChapter($page.params.id);
@@ -90,6 +92,15 @@
 			{#if current.tagging_mode === 'source'}<p class="meta">Original EJEE tagging</p>{/if}
 			{#if current.source_tags?.length}<p class="meta">Tags: {current.source_tags.join(' · ')}</p>{/if}
 			{#if current.suggestion}<p class="hint">Topic review: {current.suggestion}</p>{/if}
+			{#if $role === 'archivist'}
+				<button type="button" class="pl-btn" onclick={() => editFigures = !editFigures}>{editFigures ? 'Close diagram editor' : 'Edit diagrams'}</button>
+				{#if editFigures}
+					{#key `${number}|${figureRev}`}
+						<div class="figures-editor"><FigurePanel ejeePaperId={paper.id} qn={current.number} rev={figureRev}
+							onChanged={async () => { figureRev += 1; const fresh = await api.getImportedChapter($page.params.id); questions = fresh.questions; }} /></div>
+					{/key}
+				{/if}
+			{/if}
 			<Segments segments={current.question} />
 			<button class="pl-btn" onclick={() => showSolution = !showSolution}>
 				{showSolution ? 'Hide' : 'Show'} {current.key_only ? 'answer key' : 'solution'}
@@ -113,4 +124,5 @@
 	.cart-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:12px 0; }
 	.solution { margin-top:22px; padding-top:18px; border-top:1px solid var(--pl-line); }
 	details { margin-bottom:18px; }
+	.figures-editor { margin:14px 0; padding:14px; border:1px solid var(--pl-line); border-radius:10px; }
 </style>

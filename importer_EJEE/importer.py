@@ -9,6 +9,7 @@ from collections import defaultdict
 import hashlib
 import io
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -501,13 +502,24 @@ def extract_item(manifest, item, cfg, run):
                 if optimized and name in ('assisted_crop', 'exact_crop'):
                     # Both mapped crop tools operate on the original source canvas.
                     # Do not invoke PDF crop heuristics or their conflicting feedback.
-                    from raster_figures import clear_crop_edges
+                    from raster_figures import clear_crop_edges, crop_figure as probe_crop, snap_to_ink_blobs
                     side = 'question' if args['pdf_path'] == manifest['question_pdf'] else 'solution'
                     idx = item[f'{side}_pages'].index(args['page_number'])
                     body = item[f'{side}_rows'][idx]['asset_evidence']['body_png']
                     box = [args[k] for k in ('x', 'y', 'width', 'height')]
                     with Image.open(body) as source:
-                        box = clear_crop_edges(source, box)
+                        # Prefer whole ink blobs around the model's rough box; they cannot clip a
+                        # diagram or brush a neighbouring paragraph. Fall back to edge clearing.
+                        x, y, w, h = box
+                        rough = [max(0, math.floor(x*source.width/1000)), max(0, math.floor(y*source.height/1000)),
+                                 min(source.width, math.ceil((x+w)*source.width/1000)),
+                                 min(source.height, math.ceil((y+h)*source.height/1000))]
+                        snapped = snap_to_ink_blobs(source, rough) if rough[2] > rough[0] and rough[3] > rough[1] else None
+                        if snapped and not probe_crop(source, snapped, pixel_box=True)[1]['edge_warnings']:
+                            box = [snapped[0]*1000/source.width, snapped[1]*1000/source.height,
+                                   (snapped[2]-snapped[0])*1000/source.width, (snapped[3]-snapped[1])*1000/source.height]
+                        else:
+                            box = clear_crop_edges(source, box)
                     result = 'Saved ' + args['output_filename'] + '. Original source-pixel crop. final box: ' + json.dumps(box)
                 elif name in ('get_page_image', 'assisted_crop', 'exact_crop'):
                     result = by_name[name].invoke({'name': name, 'args': args, 'id': call['id'], 'type': 'tool_call'})
@@ -549,6 +561,11 @@ def extract_item(manifest, item, cfg, run):
                         if not review['edge_warnings'] or auto_note:
                             clear_figures.add(args['output_filename'])
                         note=('RE-CROP REQUIRED: source ink touches '+', '.join(review['edge_warnings'])+'. The automatic search found no nearby clear cut on those edges. Inspect the full source image and move the failing edge to a visible blank gap. Keep the complete diagram and exclude prose.' if review['edge_warnings'] else 'Raster edges have clearance. Compare with the full source: exclude statement fragments and include every dimension label. If correct, submit the transcription now.')
+                        if review['edge_warnings'] and not auto_note:
+                            from raster_figures import figure_candidates
+                            with Image.open(body) as im:
+                                note += (' Detected ink blocks (x, y, width, height on the 0-1000 scale; a block may be '
+                                         'prose, not a diagram): ' + json.dumps(figure_candidates(im)) + '.')
                         if auto_note:
                             note = auto_note
                         if cuts:

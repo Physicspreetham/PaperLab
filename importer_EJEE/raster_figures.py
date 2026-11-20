@@ -197,3 +197,103 @@ def nearby_clear_cuts(image, review):
         if candidates:
             cuts[edge] = candidates
     return cuts
+
+
+def ink_components(image, *, grid=600, reach=.012):
+    """Group ink into blobs by proximity (letters->words->paragraphs, strokes->diagram).
+
+    Works on a coarse grid so it stays fast on 2400px pages. Returns
+    [{'box': [l,t,r,b] in source px, 'ink': ink-cell count}] with tight boxes.
+    """
+    from PIL import ImageFilter
+    mask = np.asarray(content_ink(image)) > 0
+    height, width = mask.shape
+    block = max(1, round(max(width, height) / grid))
+    rows, cols = -(-height // block), -(-width // block)
+    padded = np.zeros((rows * block, cols * block), bool)
+    padded[:height, :width] = mask
+    cells = padded.reshape(rows, block, cols, block).any(axis=(1, 3))
+    radius = max(1, round(reach * width / block))
+    dilated = np.asarray(Image.fromarray((cells * 255).astype(np.uint8)).filter(
+        ImageFilter.MaxFilter(2 * radius + 1))) > 0
+    labels = np.zeros(cells.shape, np.int32)
+    count = 0
+    for start in zip(*np.nonzero(dilated)):
+        if labels[start]:
+            continue
+        count += 1
+        labels[start] = count
+        stack = [start]
+        while stack:
+            y, x = stack.pop()
+            for ny in range(max(0, y - 1), min(rows, y + 2)):
+                for nx in range(max(0, x - 1), min(cols, x + 2)):
+                    if dilated[ny, nx] and not labels[ny, nx]:
+                        labels[ny, nx] = count
+                        stack.append((ny, nx))
+    result = []
+    for label in range(1, count + 1):
+        member = (labels == label) & cells
+        if not member.any():
+            continue
+        ys, xs = np.nonzero(member)
+        l, t, r, b = xs.min() * block, ys.min() * block, min(width, (xs.max() + 1) * block), min(height, (ys.max() + 1) * block)
+        tight = mask[t:b, l:r]
+        ty, tx = np.nonzero(tight)
+        result.append({'box': [l + int(tx.min()), t + int(ty.min()), l + int(tx.max()) + 1, t + int(ty.max()) + 1],
+                       'ink': int(member.sum())})
+    return result
+
+
+def _overlap(a, b):
+    w = min(a[2], b[2]) - max(a[0], b[0])
+    h = min(a[3], b[3]) - max(a[1], b[1])
+    return max(0, w) * max(0, h)
+
+
+def _area(box):
+    return max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+
+
+def snap_to_ink_blobs(image, box_px, components=None):
+    """Refine an approximate model box to whole ink blobs; None if that is unsafe.
+
+    Blobs mostly inside the box belong to the figure. A blob only partly inside
+    is a clipped part of the diagram when it is about figure-sized, and foreign
+    prose (a paragraph the box merely brushes) when it is much larger. Refusing
+    when foreign prose overlaps the result keeps this from swallowing text.
+    """
+    blobs = components if components is not None else ink_components(image)
+    box_area = max(1, _area(box_px))
+    keep, foreign = [], []
+    for blob in blobs:
+        inter = _overlap(blob['box'], box_px)
+        if not inter:
+            continue
+        area = max(1, _area(blob['box']))
+        inside = inter / area
+        if inside >= .6 or (inside >= .25 and area <= 2.2 * box_area and inter >= .12 * box_area):
+            keep.append(blob['box'])
+        elif inter / box_area >= .002:
+            foreign.append(blob['box'])
+    if not keep:
+        return None
+    merged = [min(b[0] for b in keep), min(b[1] for b in keep), max(b[2] for b in keep), max(b[3] for b in keep)]
+    if any(_overlap(f, merged) for f in foreign):
+        return None
+    # Blobs are separated by more than the grouping reach, so a small blank margin
+    # keeps the exported rectangle off the ink without touching a neighbour.
+    margin = max(6, round(.004 * image.width))
+    return [max(0, merged[0] - margin), max(0, merged[1] - margin),
+            min(image.width, merged[2] + margin), min(image.height, merged[3] + margin)]
+
+
+def figure_candidates(image, limit=6):
+    """Diagram-like ink blobs as normalized [x, y, width, height] (0-1000), largest first."""
+    width, height = image.size
+    page = width * height
+    blobs = [b for b in ink_components(image) if _area(b['box']) >= .004 * page]
+    blobs.sort(key=lambda b: -_area(b['box']))
+    return [[round(b['box'][0] * 1000 / width), round(b['box'][1] * 1000 / height),
+             round((b['box'][2] - b['box'][0]) * 1000 / width), round((b['box'][3] - b['box'][1]) * 1000 / height)]
+            for b in blobs[:limit]]

@@ -150,3 +150,39 @@ def test_dark_board_page_crops_by_content_not_by_black_canvas():
     assert out.getpixel((0, 0)) == (0, 0, 0)  # clearance matches the board
     _, clipped = crop_figure(source, [60, 40, 160, 240], pixel_box=True)
     assert 'right' in clipped['edge_warnings']
+
+
+def prose_and_diagram_page():
+    source = Image.new('RGB', (1200, 600), 'white')
+    draw = ImageDraw.Draw(source)
+    for y in range(40, 200, 28):  # paragraph on the left, brushed by sloppy boxes
+        draw.line((40, y, 520, y), fill='black', width=8)
+    draw.rectangle((700, 100, 950, 380), outline='black', width=4)
+    draw.ellipse((760, 160, 880, 300), outline='blue', width=4)
+    draw.line((950, 240, 1190, 240), fill='black', width=3)  # lead running to the page edge
+    return source
+
+
+def test_snap_completes_a_clipped_diagram_and_ignores_brushed_prose():
+    from importer_EJEE.raster_figures import snap_to_ink_blobs
+    source = prose_and_diagram_page()
+    box = snap_to_ink_blobs(source, [480, 60, 1000, 300])  # clips the diagram, brushes the paragraph
+    assert box is not None and box[0] > 540 and box[2] >= 1190 and box[1] < 100 and box[3] > 380
+    _, info = crop_figure(source, box, pixel_box=True)
+    assert info['edge_warnings'] == []
+
+
+def test_snap_refuses_when_foreign_prose_would_be_swallowed():
+    from importer_EJEE.raster_figures import snap_to_ink_blobs
+    source = Image.new('RGB', (1200, 600), 'white')
+    draw = ImageDraw.Draw(source)
+    for y in range(40, 560, 28):
+        draw.line((40, y, 1100, y), fill='black', width=8)  # one huge paragraph block
+    draw.ellipse((300, 200, 400, 300), outline='blue', width=4)
+    assert snap_to_ink_blobs(source, [280, 180, 420, 320]) is None
+
+
+def test_figure_candidates_list_separate_blocks_in_normalized_units():
+    from importer_EJEE.raster_figures import figure_candidates
+    found = figure_candidates(prose_and_diagram_page())
+    assert any(abs(x - 583) < 20 and abs(w - 408) < 30 for x, y, w, h in found)

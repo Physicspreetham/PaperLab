@@ -34,6 +34,47 @@ class ReviewCropBody(BaseModel):
     confirm_edges: bool = False
 
 
+@router.get('/collections/{paper_id}/questions/{number}/figures')
+def collection_figures(paper_id: int, number: str):
+    from importer_EJEE import collection_figures as figures
+    try:
+        return figures.list_figures(paper_id, number)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.get('/collections/{paper_id}/questions/{number}/figures/{name}/source')
+def collection_figure_source(paper_id: int, number: str, name: str):
+    from importer_EJEE import collection_figures as figures
+    try:
+        return Response(figures.source_image(paper_id, number, name), media_type='image/png')
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.post('/collections/{paper_id}/questions/{number}/figures/{name}/restore')
+def collection_figure_restore(paper_id: int, number: str, name: str):
+    from importer_EJEE import collection_figures as figures
+    try:
+        return figures.restore_original(paper_id, number, name)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.post('/collections/{paper_id}/questions/{number}/figures/{name}/{action}')
+def collection_figure_edit(paper_id: int, number: str, name: str,
+                           action: Literal['preview', 'save'], body: ReviewCropBody):
+    from importer_EJEE import collection_figures as figures
+    try:
+        image, edges = figures.edit_figure(paper_id, number, name, (body.left, body.top, body.right, body.bottom),
+                                           body.rotate, action == 'save', body.confirm_edges)
+        if action == 'preview':
+            return Response(image, media_type='image/png', headers={'X-Crop-Edge-Warnings': ','.join(edges)})
+        return Response(status_code=204)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
 @router.get('/jobs/{job_id}/crop-review')
 def job_crop_review(job_id: str):
     from importer_EJEE.crop_review import review_figures

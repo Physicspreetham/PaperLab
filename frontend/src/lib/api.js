@@ -72,6 +72,23 @@ export const api = {
 	saveEjeeCrop: (id, row, box) => request(`/ejee/jobs/${id}/crop-review/${encodeURIComponent(row.number)}/${row.name}/${row.page}/save`, {
 		method:'POST', body:JSON.stringify(box)
 	}),
+	getEjeeFigures: (paperId, qn) => request(`/ejee/collections/${paperId}/questions/${encodeURIComponent(qn)}/figures`),
+	ejeeFigureSource: (paperId, qn, name) => `${BASE}/ejee/collections/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}/source`,
+	previewEjeeFigure: async (paperId, qn, name, box) => {
+		const res = await fetch(`${BASE}/ejee/collections/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}/preview`, {
+			method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(box)
+		});
+		if (!res.ok) {
+			const error = await res.json().catch(() => null);
+			throw new Error(typeof error?.detail === 'string' ? error.detail : `Crop preview failed (${res.status})`);
+		}
+		return { url: URL.createObjectURL(await res.blob()),
+			edges: (res.headers.get('X-Crop-Edge-Warnings') || '').split(',').filter(Boolean) };
+	},
+	saveEjeeFigure: (paperId, qn, name, box) => request(`/ejee/collections/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}/save`, {
+		method:'POST', body:JSON.stringify(box)
+	}),
+	restoreEjeeFigure: (paperId, qn, name) => request(`/ejee/collections/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}/restore`, { method:'POST' }),
 	getEjeeUsage: () => request('/ejee/usage'),
 	getEjeeSelectionUsage: () => request('/ejee/usage/selection'),
 	getImportedTextbooks: () => request('/ejee/library/papers'),

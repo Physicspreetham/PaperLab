@@ -1,4 +1,5 @@
 <script>
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api.js';
 
 	/**
@@ -6,7 +7,9 @@
 	 * Delete (two-step, trash + undo) and an Add card. All destructive ops
 	 * keep bytes in trash; nothing is unlinked except via Empty trash.
 	 */
-	let { paperId, qn, rev = 0, onChanged = () => {} } = $props();
+	let { paperId, qn, rev = 0, onChanged = () => {}, reviewJobId = null, ejeePaperId = null } = $props();
+	// Both EJEE modes crop from the original source image, so they may grow beyond the current PNG.
+	const sourceMode = $derived(!!reviewJobId || !!ejeePaperId);
 
 	let figures = $state([]);
 	let trash = $state([]);
@@ -17,6 +20,13 @@
 	let box = $state({ left: 0, top: 0, right: 100, bottom: 100 });
 	let angle = $state(0);
 	let preview = $state('');
+	let previewEdges = $state([]);
+	let sourceEdgeReached = $derived(previewEdges.some(edge =>
+		({ left: box.left === 0, top: box.top === 0, right: box.right === 100, bottom: box.bottom === 100 })[edge]
+	));
+	let previewError = $state('');
+	let confirmEdges = $state(false);
+	let cropError = $state('');
 	let previewSeq = 0;
 	let previewTimer = null;
 	let replacing = $state(null);
@@ -32,6 +42,26 @@
 
 	async function load() {
 		try {
+			if (ejeePaperId) {
+				const rows = await api.getEjeeFigures(ejeePaperId, qn);
+				figures = rows.map(row => ({
+					name:row.name, side:row.side, usedIn:[], entry:row,
+					mode:row.edited ? 'Edited' : row.needs_check ? 'Check crop' : '',
+					url:api.ejeeFigureSource(ejeePaperId, qn, row.name),
+					thumb:`/api/ejee/library/papers/${ejeePaperId}/questions/${encodeURIComponent(qn)}/figures/${row.name}`
+				}));
+				if (!rows.length) message = 'No source crops are archived for this question, so its diagrams cannot be re-cropped.';
+				return;
+			}
+			if (reviewJobId) {
+				const rows = await api.getEjeeCropReview(reviewJobId);
+				figures = rows.map(row => ({
+					name:`Q${row.number} · ${row.name} · page ${row.page}`, side:row.side, usedIn:[],
+					mode:row.saved ? 'Saved' : 'Needs review', url:api.ejeeCropSource(reviewJobId,row), entry:row
+				}));
+				if (!rows.length) message = 'No diagram crops were recorded for this review.';
+				return;
+			}
 			[figures, trash] = await Promise.all([
 				api.listFigures(paperId, qn),
 				api.listTrash(paperId, qn)
@@ -55,14 +85,46 @@
 		replacing = null;
 		arming = null;
 		box = { left: 0, top: 0, right: 100, bottom: 100 };
-		angle = 0;
+		if (fig.entry?.box?.every(Number.isFinite)) {
+			const [x,y,w,h] = fig.entry.box;
+			box = {left:Math.max(0, x/10), top:Math.max(0, y/10), right:Math.min(100,(x+w)/10), bottom:Math.min(100,(y+h)/10)};
+		}
+		angle = fig.entry?.saved?.rotation ?? 0;
 		setPreview('');
+		cropError = '';
 		message = '';
 	}
 
 	function setPreview(url) {
 		if (preview) URL.revokeObjectURL(preview);
 		preview = url;
+	}
+
+	let dragStart = null;
+	function pointerPos(e) {
+		const rect = e.currentTarget.getBoundingClientRect();
+		return { x: Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100)),
+			y: Math.min(100, Math.max(0, (e.clientY - rect.top) / rect.height * 100)) };
+	}
+	function dragDown(e) {
+		if (!sourceMode) return;
+		e.currentTarget.setPointerCapture(e.pointerId);
+		dragStart = pointerPos(e);
+	}
+	function dragMove(e) {
+		if (!dragStart) return;
+		const p = pointerPos(e);
+		if (Math.abs(p.x - dragStart.x) < 1 || Math.abs(p.y - dragStart.y) < 1) return;
+		box = { left: Math.min(dragStart.x, p.x), right: Math.max(dragStart.x, p.x),
+			top: Math.min(dragStart.y, p.y), bottom: Math.max(dragStart.y, p.y) };
+	}
+	function dragUp() { dragStart = null; }
+
+	async function restoreOriginal(fig) {
+		if (!window.confirm(`Restore the original import crop of ${fig.name}?`)) return;
+		busy = true; message = '';
+		try { await api.restoreEjeeFigure(ejeePaperId, qn, fig.name); adjusting = null; message = `Restored ${fig.name}.`; await refresh(); }
+		catch (e) { message = `Restore failed: ${e.message}`; } finally { busy = false; }
 	}
 
 	function stepAngle(d) {
@@ -72,20 +134,30 @@
 	function queuePreview(fig) {
 		// Debounced exact-result preview: what Save would write, read-only.
 		clearTimeout(previewTimer);
+		const seq = ++previewSeq;
+		if (sourceMode) setPreview('');
+		previewEdges = [];
+		previewError = '';
+		confirmEdges = false;
+		cropError = '';
 		previewTimer = setTimeout(async () => {
-			const seq = ++previewSeq;
 			try {
-				const url = await api.previewFigure(paperId, qn, fig.name, {
+				const bounds = {
 					left: box.left / 100,
 					top: box.top / 100,
 					right: box.right / 100,
 					bottom: box.bottom / 100,
 					rotate: angle
-				});
-				if (seq === previewSeq && adjusting === fig.name) setPreview(url);
-				else URL.revokeObjectURL(url);
-			} catch {
-				/* crop box mid-drag can be degenerate; next tick retries */
+				};
+				const { url, edges } = reviewJobId ? await api.previewEjeeCrop(reviewJobId, fig.entry, bounds)
+					: ejeePaperId ? await api.previewEjeeFigure(ejeePaperId, qn, fig.name, bounds)
+					: { url: await api.previewFigure(paperId, qn, fig.name, bounds), edges: [] };
+				if (seq === previewSeq && adjusting === fig.name) {
+					setPreview(url);
+					previewEdges = edges;
+				} else URL.revokeObjectURL(url);
+			} catch (e) {
+				if (sourceMode && seq === previewSeq && adjusting === fig.name) previewError = e.message;
 			}
 		}, 300);
 	}
@@ -96,26 +168,32 @@
 		const deg = angle;
 		if (adjusting && left != null && top != null && right != null && bottom != null && deg != null) {
 			const fig = figures.find((f) => f.name === adjusting);
-			if (fig) queuePreview(fig);
+			if (fig) untrack(() => queuePreview(fig));
 		}
 	});
 
 	async function saveCrop(fig) {
 		busy = true;
 		message = '';
+		cropError = '';
 		try {
-			await api.cropFigure(paperId, qn, fig.name, {
+			const bounds = {
 				left: box.left / 100,
 				top: box.top / 100,
 				right: box.right / 100,
 				bottom: box.bottom / 100,
 				rotate: angle
-			});
-			message = `Saved ${fig.name} - original kept in trash.`;
+			};
+			if (reviewJobId) await api.saveEjeeCrop(reviewJobId, fig.entry, { ...bounds, confirm_edges: confirmEdges });
+			else if (ejeePaperId) await api.saveEjeeFigure(ejeePaperId, qn, fig.name, { ...bounds, confirm_edges: confirmEdges });
+			else await api.cropFigure(paperId, qn, fig.name, bounds);
+			message = reviewJobId ? `Saved ${fig.name}. Resume import to apply the crop.`
+				: ejeePaperId ? `Saved ${fig.name}. The original crop is kept and can be restored.`
+				: `Saved ${fig.name} - original kept in trash.`;
 			adjusting = null;
 			await refresh();
 		} catch (e) {
-			message = `Crop failed: ${e.message}`;
+			cropError = `Crop failed: ${e.message}`;
 		} finally {
 			busy = false;
 		}
@@ -229,19 +307,23 @@
 	<div class="grid">
 		{#each figures as fig (fig.name)}
 			<div class="pl-card fig">
-				<img class="thumb" src={bust(fig.url)} alt={fig.name} loading="lazy" />
+				<img class="thumb" src={bust(fig.thumb || fig.url)} alt={fig.name} loading="lazy" />
 				<div class="pl-mono fname">{fig.name}</div>
 				<div class="badges">
 					<span class="pl-chip">{fig.side}</span>
 					{#if fig.mode}<span class="pl-chip">{fig.mode}</span>{/if}
-					{#if fig.usedIn.length === 0}
+					{#if !sourceMode && fig.usedIn.length === 0}
 						<span class="pl-chip">unused</span>
-					{:else}
+					{:else if !sourceMode}
 						{#each fig.usedIn as u (u)}<span class="pl-chip">in: {u}</span>{/each}
 					{/if}
 				</div>
 				<div class="row">
 					<button type="button" class="pl-btn" onclick={() => openAdjust(fig)}>Adjust</button>
+					{#if ejeePaperId && fig.entry.edited}
+						<button type="button" class="pl-btn" disabled={busy} onclick={() => restoreOriginal(fig)}>Restore original</button>
+					{/if}
+					{#if !sourceMode}
 					<label class="pl-btn filebtn">
 						Replace
 						<input
@@ -259,6 +341,7 @@
 					>
 						{arming === fig.name ? 'Confirm delete' : 'Delete'}
 					</button>
+					{/if}
 				</div>
 				{#if arming === fig.name}
 					<p class="pl-sub warn">
@@ -271,18 +354,19 @@
 				{/if}
 				{#if adjusting === fig.name}
 					<div class="cropbox">
-						<div class="cropwrap">
-							<img src={bust(fig.url)} alt="Original for cropping" />
+						<div class="cropwrap" class:draw={sourceMode} role="presentation"
+							onpointerdown={dragDown} onpointermove={dragMove} onpointerup={dragUp} onpointercancel={dragUp}>
+							<img src={bust(fig.url)} alt="Original for cropping" draggable="false" />
 							<div
 								class="croprect"
 								style="left: {box.left}%; top: {box.top}%; width: {Math.max(box.right - box.left, 0)}%; height: {Math.max(box.bottom - box.top, 0)}%;"
 								aria-hidden="true"
 							></div>
 						</div>
-						<label>Left % <input type="range" min="0" max="99" bind:value={box.left} /></label>
-						<label>Right % <input type="range" min="1" max="100" bind:value={box.right} /></label>
-						<label>Top % <input type="range" min="0" max="99" bind:value={box.top} /></label>
-						<label>Bottom % <input type="range" min="1" max="100" bind:value={box.bottom} /></label>
+						<label>Left % <input type="range" min="0" max="99" step={sourceMode ? 0.1 : 1} bind:value={box.left} /></label>
+						<label>Right % <input type="range" min="1" max="100" step={sourceMode ? 0.1 : 1} bind:value={box.right} /></label>
+						<label>Top % <input type="range" min="0" max="99" step={sourceMode ? 0.1 : 1} bind:value={box.top} /></label>
+						<label>Bottom % <input type="range" min="1" max="100" step={sourceMode ? 0.1 : 1} bind:value={box.bottom} /></label>
 						<div class="rotctl">
 							<span id="rot-label">Rotate</span>
 							<div class="rotrow" role="group" aria-labelledby="rot-label">
@@ -298,9 +382,18 @@
 								<img src={preview} alt="Rotated result preview" class="previmg" />
 							</div>
 						{/if}
-						<p class="pl-sub">Crop stays inside the current image. To expand, re-crop from the PDF.</p>
+						{#if sourceMode}<p class="pl-sub">Drag on the original image to draw the crop, then fine-tune with the sliders.</p>{:else}<p class="pl-sub">Crop stays inside the current image. To expand, re-crop from the PDF.</p>{/if}
+						{#if previewError || cropError}<p class="pl-sub warn" role="alert">{cropError || previewError}</p>{/if}
+						{#if previewEdges.length}
+							<p class="pl-sub warn">
+								Source ink touches the {previewEdges.join(', ')} edge.
+								{#if sourceEdgeReached}The crop already reaches the source image boundary on a flagged edge.{/if}
+								If the preview shows the full diagram, confirm it below to save.
+							</p>
+							<label><input type="checkbox" bind:checked={confirmEdges} /> The preview contains the complete diagram.</label>
+						{/if}
 						<div class="row">
-							<button type="button" class="pl-btn pl-btn-primary" disabled={busy} onclick={() => saveCrop(fig)}>Save crop</button>
+							<button type="button" class="pl-btn pl-btn-primary" disabled={busy || (sourceMode && (!preview || (previewEdges.length > 0 && !confirmEdges)))} onclick={() => saveCrop(fig)}>Save crop</button>
 							<button type="button" class="pl-btn" onclick={() => (adjusting = null)}>Cancel</button>
 						</div>
 					</div>
@@ -320,7 +413,7 @@
 			</div>
 		{/each}
 
-		<div class="pl-card add">
+		{#if !sourceMode}<div class="pl-card add">
 			<h3>Add a figure</h3>
 			<div class="segrow" role="group" aria-label="Attach to">
 				{#each ['question', 'solution'] as t (t)}
@@ -349,7 +442,7 @@
 			<div class="row">
 				<button type="button" class="pl-btn pl-btn-primary" disabled={!addFile || busy} onclick={add}>Add figure</button>
 			</div>
-		</div>
+		</div>{/if}
 	</div>
 
 	{#if trash.length > 0}
@@ -491,6 +584,7 @@
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-sm);
 	}
+	.cropwrap.draw { cursor: crosshair; touch-action: none; user-select: none; }
 	.cropwrap img {
 		display: block;
 		max-width: 100%;

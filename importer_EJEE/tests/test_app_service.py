@@ -198,3 +198,37 @@ def test_collection_title_rename_validates_and_keeps_content(tmp_path, monkeypat
     with pytest.raises(FileNotFoundError):library.rename(999, 'Missing')
     with sqlite3.connect(target) as c:
         assert c.execute('SELECT paper_name FROM papers WHERE id=3').fetchone()[0] == names[3]
+
+
+def test_published_figure_can_be_recropped_from_archived_source_and_restored(tmp_path, monkeypatch):
+    import hashlib
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+    from importer_EJEE import library_store as library, collection_figures as figures
+    monkeypatch.setattr(library, 'store', lambda: {'db': tmp_path/'x.db', 'outputs': tmp_path/'Outputs', 'data': tmp_path/'data'})
+    source = Image.new('RGB', (400, 200), 'white')
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((100, 40, 250, 160), outline='black', width=3)
+    draw.line((250, 100, 380, 100), fill='black', width=3)  # lead the first crop cut off
+    archive = tmp_path/'data'/'archive'/'ejee'/'7'; archive.mkdir(parents=True)
+    buf = BytesIO(); source.save(buf, format='PNG'); (archive/'10-body.png').write_bytes(buf.getvalue())
+    folder = tmp_path/'Outputs'/'7'/'3'/'figures'; folder.mkdir(parents=True)
+    source.crop((90, 30, 260, 170)).save(folder/'qfig1.png')
+    service.write_json(folder/'_import_provenance.json', {'qfig1.png': {
+        'source_body': r'C:\runs\x\sources\10-body.png', 'source_sha256': hashlib.sha256(buf.getvalue()).hexdigest(),
+        'requested_source_pixel_box': [90, 30, 260, 170], 'source_pixel_box': [100, 40, 251, 161],
+        'edge_warnings': ['right'], 'confirmed_edge_warnings': ['right']}})
+    row = figures.list_figures(7, '3')[0]
+    assert row['name'] == 'qfig1.png' and row['needs_check'] and not row['edited']
+    assert figures.source_image(7, '3', 'qfig1.png') == buf.getvalue()
+    png, edges = figures.edit_figure(7, '3', 'qfig1.png', (.2, .15, 1.0, .9), 0, False)
+    assert Image.open(folder/'qfig1.png').size == (170, 140)
+    with pytest.raises(ValueError, match='reaches the crop edge'):
+        figures.edit_figure(7, '3', 'qfig1.png', (.2, .15, .75, .9), 0, True)
+    figures.edit_figure(7, '3', 'qfig1.png', (.2, .15, .99, .9), 0, True)
+    assert Image.open(folder/'qfig1.png').width > 170 and (folder/'_originals'/'qfig1.png').is_file()
+    assert figures.list_figures(7, '3')[0]['edited']
+    figures.restore_original(7, '3', 'qfig1.png')
+    assert Image.open(folder/'qfig1.png').size == (170, 140)
+    with pytest.raises(ValueError):figures.edit_figure(7, '3', 'qfig1.png', (.5, .1, .4, .9), 0, False)
+    with pytest.raises(ValueError):figures.list_figures(7, '../x')
