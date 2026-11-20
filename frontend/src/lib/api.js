@@ -28,7 +28,14 @@ async function request(path, options = {}) {
 	if (!res.ok) {
 		let detail = res.statusText;
 		try {
-			detail = (await res.json()).detail || detail;
+			const payload = (await res.json()).detail;
+			if (typeof payload === 'string') detail = payload;
+			if (Array.isArray(payload)) {
+				detail = payload.filter(issue => typeof issue?.msg === 'string').map(issue => {
+					const field = Array.isArray(issue.loc) ? issue.loc.slice(1).join('.') : '';
+					return field ? `${field}: ${issue.msg}` : issue.msg;
+				}).join('; ') || detail;
+			}
 		} catch {
 			/* keep status text */
 		}
@@ -44,14 +51,37 @@ export const api = {
 	getEjeeQuestionDetails: (id, token) => request(`/ejee/questions/${id}?source_token=${encodeURIComponent(token)}`),
 	searchEjeeQuestions: (body) => request('/ejee/questions/search', { method:'POST', body:JSON.stringify(body), timeoutMs:60000 }),
 	importEjeeSelection: (body) => request('/ejee/selections', { method:'POST', body:JSON.stringify(body), timeoutMs:60000 }),
+	appendEjeeSelection: (paperId, body) => request(`/ejee/collections/${paperId}/questions`, { method:'POST', body:JSON.stringify(body), timeoutMs:60000 }),
 	setEjeeSource: (body) => request('/ejee/source', { method: 'PUT', body: JSON.stringify(body), timeoutMs: 60000 }),
 	getEjeeJobs: () => request('/ejee/jobs'),
+	getEjeeCropReview: (id) => request(`/ejee/jobs/${id}/crop-review`),
+	ejeeCropSource: (id, row) => `${BASE}/ejee/jobs/${id}/crop-review/${encodeURIComponent(row.number)}/${row.name}/${row.page}`,
+	previewEjeeCrop: async (id, row, box) => {
+		const res = await fetch(`${api.ejeeCropSource(id, row)}/preview`, {
+			method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(box)
+		});
+		if (!res.ok) {
+			const error = await res.json().catch(() => null);
+			throw new Error(typeof error?.detail === 'string' ? error.detail : `Crop preview failed (${res.status})`);
+		}
+		return {
+			url: URL.createObjectURL(await res.blob()),
+			edges: (res.headers.get('X-Crop-Edge-Warnings') || '').split(',').filter(Boolean)
+		};
+	},
+	saveEjeeCrop: (id, row, box) => request(`/ejee/jobs/${id}/crop-review/${encodeURIComponent(row.number)}/${row.name}/${row.page}/save`, {
+		method:'POST', body:JSON.stringify(box)
+	}),
 	getEjeeUsage: () => request('/ejee/usage'),
 	getEjeeSelectionUsage: () => request('/ejee/usage/selection'),
 	getImportedTextbooks: () => request('/ejee/library/papers'),
 	getImportedChapter: (id) => request(`/ejee/library/papers/${id}/questions`),
 	importEjeeChapters: (book_id, chapters) => request('/ejee/jobs', { method: 'POST', body: JSON.stringify({ book_id, chapters }) }),
 	resumeEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
+	cancelEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+	deleteEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	getEjeeJobQuestions: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/questions`),
+	renameEjeeCollection: (id, title) => request(`/ejee/library/papers/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
 	health: () => request('/health'),
 
 	listPapers: (params = {}) => {
@@ -67,6 +97,16 @@ export const api = {
 		request(`${library === 'ejee' ? '/ejee/library' : ''}/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
 
 	getInbox: () => request('/inbox'),
+	startPaper12Pilot: (model) => request('/pilot/12', {
+		method: 'POST', body: JSON.stringify({ model }), timeoutMs: 60000
+	}),
+	paper12PilotStatus: () => request('/pilot/12'),
+	startChatGPTConnection: () => request('/tagging/chatgpt/connect', { method: 'POST' }),
+	getChatGPTModels: () => request('/tagging/chatgpt/models', { timeoutMs: 35000 }),
+	disconnectChatGPT: () => request('/tagging/chatgpt/connection', { method: 'DELETE' }),
+	autoTag: (paperId, qn, body) => request(`/tagging/${paperId}/${encodeURIComponent(qn)}`, {
+		method: 'POST', body: JSON.stringify(body), timeoutMs: 150000
+	}),
 	classifyQuestion: (paperId, qn, body) =>
 		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`, {
 			method: 'PATCH',

@@ -43,6 +43,49 @@ def papers():
         return [dict(r) for r in c.execute('SELECT p.id,p.paper_name title,p.source_institute book,p.status,count(q.id) questions FROM papers p LEFT JOIN questions q ON q.paper_id=p.id GROUP BY p.id ORDER BY p.source_institute,p.id')]
 
 
+def rename(paper_id, title):
+    """Change a collection's display title only; content and provenance are untouched."""
+    title = ' '.join(str(title or '').split())
+    if not title or len(title) > 180:
+        raise ValueError('Enter a collection title of 1 to 180 characters.')
+    with connect() as c:
+        row = c.execute("SELECT id FROM papers WHERE id=? AND exam_type='EJEE collection'", (paper_id,)).fetchone()
+        if not row:
+            raise FileNotFoundError('Imported EJEE collection not found')
+        clash = c.execute("SELECT 1 FROM papers WHERE exam_type='EJEE collection' AND paper_name=? AND id<>?",
+                          (title, paper_id)).fetchone()
+        if clash:
+            raise ValueError('Another EJEE collection already uses this title.')
+        c.execute('UPDATE papers SET paper_name=? WHERE id=?', (title, paper_id))
+    return {'id': paper_id, 'title': title}
+
+
+_imported_cache = {'stamp': None, 'index': {}}
+
+
+def imported_index():
+    """selection_key -> {paper_id,title} for every question already in a collection."""
+    from importer_EJEE.publish import collection_manifests, question_keys
+    root = store()['data'] / 'archive' / 'ejee'
+    folders = sorted(p for p in root.glob('*') if p.is_dir() and p.name.isdigit()) if root.is_dir() else []
+    files = [f for folder in folders for f in (folder / 'import-manifest.json', *(folder / 'batches').glob('*/import-manifest.json')) if f.is_file()]
+    stamp = tuple((str(f), f.stat().st_mtime_ns) for f in files)
+    if _imported_cache['stamp'] == stamp:
+        return _imported_cache['index']
+    with connect() as c:
+        titles = {r['id']: r['paper_name'] for r in c.execute("SELECT id,paper_name FROM papers WHERE status='done'")}
+    index = {}
+    for folder in folders:
+        paper_id = int(folder.name)
+        if paper_id not in titles:
+            continue
+        for manifest in collection_manifests(folder):
+            for key in question_keys(manifest['items']):
+                index.setdefault(key, {'paper_id': paper_id, 'title': titles[paper_id]})
+    _imported_cache.update(stamp=stamp, index=index)
+    return index
+
+
 def metadata(paper_id):
     with connect() as c:
         row=c.execute('SELECT id,paper_name title,source_institute institute,exam_type exam,status FROM papers WHERE id=?',(paper_id,)).fetchone()
@@ -52,14 +95,16 @@ def metadata(paper_id):
 
 def questions(paper_id,number=None):
     from backend.segments import tex_segments
+    from directory_manager import SOLUTION_PLACEHOLDER
+    from importer_EJEE.publish import collection_manifests
     with connect() as c:
         paper=c.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
         if not paper:raise FileNotFoundError('Imported EJEE collection not found')
-        manifest_path=store()['data']/'archive'/'ejee'/str(paper_id)/'import-manifest.json'
-        provenance={}
-        if manifest_path.exists():
-            manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
-            provenance={item['number']:item for item in manifest['items']}
+        manifests = collection_manifests(store()['data']/'archive'/'ejee'/str(paper_id))
+        provenance = {item['number']: item for manifest in manifests for item in manifest['items']}
+        key_only = {item['number'] for manifest in manifests
+                    if manifest.get('config', {}).get('content_mode') == 'key'
+                    for item in manifest['items']}
         rows=c.execute('SELECT * FROM questions WHERE paper_id=?'+(' AND question_number=?' if number is not None else ''),
                        (paper_id,number) if number is not None else (paper_id,)).fetchall()
         topics={r['code']:dict(r) for r in c.execute('SELECT * FROM topics')}
@@ -69,14 +114,31 @@ def questions(paper_id,number=None):
             entry={'number':row['question_number'],'qtype':row['qtype'],'difficulty':row['difficulty'], 'suggestion':row['topic_suggestion'],'topics':[]}
             original=provenance.get(row['question_number'],{}).get('question_rows',[])
             entry['source']=original[0]['source'] if original else paper['source_institute']
+            entry['key_only'] = row['question_number'] in key_only
             for code,rank in c.execute('SELECT topic_code,rank FROM question_topics WHERE question_id=? ORDER BY rank',(row['id'],)):
                 parts=[];seen=set();cur=code
                 while cur in topics and cur not in seen:
                     seen.add(cur);parts.append(topics[cur]['name']);cur=topics[cur]['parent']
                 entry['topics'].append({'code':code,'path':' › '.join(reversed(parts))})
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='ejee_source_tags'").fetchone():
+                saved = c.execute('SELECT metadata FROM ejee_source_tags WHERE question_id=?', (row['id'],)).fetchone()
+                if saved:
+                    entry['tagging_mode'] = 'source'
+                    entry['source_metadata'] = json.loads(saved['metadata'])
+                    resources = entry['source_metadata']['resources']
+                    entry['difficulty'] = next((r['difficulty'] for r in resources if r.get('difficulty')), None)
+                    entry['source_tags'] = list(dict.fromkeys(r['tags'] for r in resources if r.get('tags')))
+                    for resource in resources:
+                        lineage = resource.get('ancestry', [])
+                        if lineage:
+                            topic = {'code': 'EJEE-' + str(lineage[0]['id']),
+                                     'path': ' › '.join(n['name'] for n in reversed(lineage))}
+                            if topic not in entry['topics']: entry['topics'].append(topic)
             for side in ('question','solution'):
                 path=folder/f'{side}.tex'
                 text=path.read_text(encoding='utf-8') if path.exists() else 'Content missing.'
+                if side == 'solution' and entry['key_only'] and text.strip() == SOLUTION_PLACEHOLDER:
+                    text = 'No explicit answer key was available in the source.'
                 def scoped(value):
                     if isinstance(value,str) and value.startswith('/api/papers/'):
                         return value.replace('/api/papers/','/api/ejee/library/papers/',1)
@@ -85,7 +147,9 @@ def questions(paper_id,number=None):
                     return value
                 entry[side]=scoped(tex_segments(text,folder,paper_id,row['question_number']))
             result.append(entry)
-        return {'paper':{'id':paper['id'],'title':paper['paper_name'],'book':paper['source_institute']},'questions':result}
+        return {'paper':{'id':paper['id'],'title':paper['paper_name'],'book':paper['source_institute'],
+                        'can_append':bool(manifests) and paper['status']=='done'
+                        and paper['exam_type']=='EJEE collection'},'questions':result}
 
 
 def usage():

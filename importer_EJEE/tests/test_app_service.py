@@ -70,6 +70,62 @@ def test_verified_publish_preserves_topics_usage_and_is_idempotent(tmp_path):
     assert (data/'archive/ejee/4/questions.pdf').is_file()
 
 
+def test_publish_copies_original_ejee_metadata_with_new_question_ids(tmp_path):
+    from importer_EJEE.source_tagging import ensure_table
+    target=fixture_target(tmp_path);run=isolated_run(tmp_path)
+    metadata={'resources':[{'id':42,'tags':'Thermal Physics','difficulty':'Olympiad','ancestry':[]}]}
+    with sqlite3.connect(run/'paperlab.db') as c:
+        ensure_table(c)
+        qid=c.execute('SELECT id FROM questions WHERE paper_id=2 ORDER BY id LIMIT 1').fetchone()[0]
+        c.execute('INSERT INTO ejee_source_tags VALUES (?,?)',(qid,json.dumps(metadata)))
+    result=publish_chapter(run,target,tmp_path/'Outputs',tmp_path/'data')
+    with sqlite3.connect(target) as c:
+        saved=c.execute('SELECT t.metadata FROM ejee_source_tags t JOIN questions q ON q.id=t.question_id WHERE q.paper_id=?',(result['paper_id'],)).fetchone()
+        assert json.loads(saved[0])==metadata
+        assert not c.execute('PRAGMA foreign_key_check').fetchall()
+
+
+def test_publish_append_preserves_existing_question_ids_and_order(tmp_path, monkeypatch):
+    from importer_EJEE import library_store
+
+    target = fixture_target(tmp_path)
+    run = isolated_run(tmp_path)
+    out, data = tmp_path / 'Outputs', tmp_path / 'data'
+    with sqlite3.connect(run / 'paperlab.db') as c:
+        c.execute("UPDATE papers SET exam_type='EJEE collection' WHERE id=2")
+    pid = publish_chapter(run, target, out, data)['paper_id']
+    with sqlite3.connect(target) as c:
+        existing = c.execute('SELECT id,question_number FROM questions WHERE paper_id=? ORDER BY id', (pid,)).fetchall()
+    original = (out / str(pid) / '1' / 'question.tex').read_bytes()
+    cfg = {'source_key':'append-test', 'book_source':'New source', 'chapter':'selection', 'append_paper_id':pid}
+    (run / 'config.json').write_text(json.dumps(cfg))
+    manifest = json.loads((run / 'manifest.json').read_text())
+    for index, item in enumerate(manifest['items']):
+        item['question_rows'] = [{'id':index + 100, 'grp':None, 'source':'New source'}]
+    (run / 'manifest.json').write_text(json.dumps(manifest))
+
+    collision = out / str(pid) / '4'
+    collision.mkdir()
+    with pytest.raises(ValueError, match='Output folder already exists'):
+        publish_chapter(run, target, out, data)
+    assert not (out / str(pid) / '3').exists()
+    with sqlite3.connect(target) as c:
+        assert c.execute('SELECT id,question_number FROM questions WHERE paper_id=? ORDER BY id', (pid,)).fetchall() == existing
+    collision.rmdir()
+
+    assert publish_chapter(run, target, out, data)['paper_id'] == pid
+    assert publish_chapter(run, target, out, data)['already_imported']
+    with sqlite3.connect(target) as c:
+        rows = c.execute('SELECT id,question_number FROM questions WHERE paper_id=? ORDER BY id', (pid,)).fetchall()
+        assert rows[:2] == existing
+        assert [number for _, number in rows] == ['1', '2', '3', '4']
+        assert c.execute('SELECT COUNT(*) FROM token_usage WHERE paper_id=?', (pid,)).fetchone()[0] == 16
+        assert not c.execute('PRAGMA foreign_key_check').fetchall()
+    assert (out / str(pid) / '1' / 'question.tex').read_bytes() == original
+    monkeypatch.setattr(library_store, 'store', lambda: {'db':target, 'outputs':out, 'data':data})
+    assert library_store.questions(pid, '3')['questions'][0]['source'] == 'New source'
+
+
 def test_publish_rejects_stale_syllabus_without_partial_paper(tmp_path):
     target=fixture_target(tmp_path);run=isolated_run(tmp_path)
     with sqlite3.connect(target) as c:c.execute("UPDATE topics SET rev=rev+1 WHERE code=(SELECT code FROM topics LIMIT 1)")
@@ -92,3 +148,53 @@ def test_invalid_job_path_and_missing_source_are_rejected(tmp_path,monkeypatch):
     monkeypatch.setattr(service,'WEB',tmp_path/'jobs')
     with pytest.raises(ValueError):service.get_job('../outside')
     with pytest.raises(ValueError):service.configure(tmp_path/'missing.db',tmp_path)
+
+
+def make_job(web, job_id, status='failed', **state):
+    folder = web / job_id
+    service.write_json(folder / 'state.json', {'id': job_id, 'source_key': 'k', 'book': 'b', 'chapter': 'c', 'total': 3,
+        'status': status, 'phase': 'converting', 'target_db': 'T', 'paper_id': None, 'error': None, **state})
+    return folder
+
+
+def test_job_questions_report_each_outcome_and_auto_accepted_crops(tmp_path, monkeypatch):
+    monkeypatch.setattr(service, 'WEB', tmp_path)
+    jid = 'a' * 32
+    folder = make_job(tmp_path, jid)
+    items = [{'number': str(n), 'group': f'g{n}', 'question_rows': [{'title': f'Q{n}'}]} for n in (1, 2, 3, 4)]
+    service.write_json(folder / 'manifest.json', {'items': items})
+    service.write_json(folder / 'progress.json', {'questions': {'1': {'ok': True, 'turns': 3},
+        '2': {'ok': False, 'needs_review': True, 'error': 'crop'}, '3': {'ok': False, 'error': 'boom'}}})
+    service.write_json(folder / 'auto_crop_reviews.json', [{'group': 'g1', 'filename': 'qfig1.png'}])
+    rows = service.job_questions(jid)
+    assert [r['status'] for r in rows] == ['done', 'review', 'failed', 'pending']
+    assert rows[0]['auto_accepted'] == ['qfig1.png'] and rows[0]['label'] == 'Q1'
+    state = service.get_job(jid)
+    assert state['auto_accepted_crops'] == 1 and state['tagging_mode'] == 'source' and not state['can_cancel']
+
+
+def test_only_stopped_jobs_can_be_removed_and_other_databases_are_protected(tmp_path, monkeypatch):
+    monkeypatch.setattr(service, 'WEB', tmp_path)
+    failed, done = 'b' * 32, 'c' * 32
+    make_job(tmp_path, failed); make_job(tmp_path, done, status='done', phase='done')
+    with pytest.raises(ValueError, match='another'):service.delete_job(failed, 'OTHER')
+    with pytest.raises(ValueError, match='Only stopped'):service.delete_job(done, 'T')
+    assert service.delete_job(failed, 'T') == {'removed': failed}
+    assert not (tmp_path / failed).exists() and (tmp_path / done).exists()
+    with pytest.raises(ValueError, match='not running'):service.cancel_job(done, 'T')
+
+
+def test_collection_title_rename_validates_and_keeps_content(tmp_path, monkeypatch):
+    from importer_EJEE import library_store as library
+    target = fixture_target(tmp_path)
+    with sqlite3.connect(target) as c:
+        c.execute("UPDATE papers SET exam_type='EJEE collection' WHERE id IN (1,3)")
+        names = dict(c.execute('SELECT id,paper_name FROM papers WHERE id IN (1,3)'))
+    monkeypatch.setattr(library, 'store', lambda: {'db': target, 'outputs': tmp_path, 'data': tmp_path})
+    assert library.rename(1, '  Electrostatics   set  ') == {'id': 1, 'title': 'Electrostatics set'}
+    with pytest.raises(ValueError, match='already uses'):library.rename(3, 'Electrostatics set')
+    with pytest.raises(ValueError):library.rename(1, '   ')
+    with pytest.raises(ValueError):library.rename(1, 'x' * 181)
+    with pytest.raises(FileNotFoundError):library.rename(999, 'Missing')
+    with sqlite3.connect(target) as c:
+        assert c.execute('SELECT paper_name FROM papers WHERE id=3').fetchone()[0] == names[3]

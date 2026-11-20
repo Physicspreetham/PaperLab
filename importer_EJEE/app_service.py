@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -34,6 +35,10 @@ MORIN_CHAPTERS = ['Strategies for solving problems', 'Statics', 'Using F = ma', 
 _lock = RLock()
 _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='ejee-import')
 _live = {}
+_procs = {}
+_cancelled = set()
+_cost_cache = {}
+STATE_KEYS = ('id','source_key','book','chapter','total','status','phase','created_at','target_db','target_outputs','target_data','paper_id','error','kind','content_mode','selected_resource_ids','append_paper_id','skipped','finished_at')
 
 
 def read_json(path, default=None):
@@ -153,6 +158,31 @@ def worker_python():
     return str(next((p for p in candidates if p.is_file()), Path(sys.executable)))
 
 
+def _job_cost(db, cacheable):
+    """Estimated API cost from a worker DB; finished jobs are cached by file time."""
+    if not db.exists():
+        return 0.0
+    stamp = tuple(p.stat().st_mtime_ns for p in (db, db.with_name(db.name + '-wal')) if p.exists())
+    if cacheable and _cost_cache.get(str(db), (None,))[0] == stamp:
+        return _cost_cache[str(db)][1]
+    import config
+    total = 0.0
+    try:
+        c = source_connection(db)
+        try:
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='token_usage'").fetchone():
+                for incoming, cached, outgoing in c.execute('SELECT input,cache_read,output FROM token_usage'):
+                    total += ((incoming-cached)*config.PRICING['input_per_mtok']
+                              + cached*config.PRICING['cache_read_per_mtok']
+                              + outgoing*config.PRICING['output_per_mtok'])/1e6
+        finally:
+            c.close()
+    except sqlite3.Error:
+        return 0.0  # The worker may still be creating its database on this poll.
+    _cost_cache[str(db)] = (stamp, total)
+    return total
+
+
 def get_job(job_id):
     if not re.fullmatch(r'[a-f0-9]{32}', job_id): raise ValueError('Invalid import job')
     state = read_json(WEB / job_id / 'state.json')
@@ -161,25 +191,78 @@ def get_job(job_id):
     state['converted'] = sum(bool(v.get('ok')) for v in progress.get('questions', {}).values())
     state['classified'] = sum(bool(v.get('ok')) for v in progress.get('node3', {}).values())
     phase = read_json(WEB / job_id / 'phase.json', {})
+    if state['status'] == 'failed':
+        state['phase'] = phase.get('phase', 'failed')
     if state['status'] in ('running', 'queued'):
         state['phase'] = phase.get('phase', state.get('phase', 'queued'))
         if job_id not in _live:
             state['status'] = 'interrupted'
             state['error'] = 'The app restarted. Resume this chapter to continue from saved progress.'
-    state['estimated_cost_usd'] = 0.0
-    db = WEB / job_id / 'paperlab.db'
-    if db.exists():
-        import config
-        try:
-            c = source_connection(db)
-            try:
-                if c.execute("SELECT 1 FROM sqlite_master WHERE name='token_usage'").fetchone():
-                    for incoming,cached,outgoing in c.execute('SELECT input,cache_read,output FROM token_usage'):
-                        state['estimated_cost_usd'] += ((incoming-cached)*config.PRICING['input_per_mtok']+cached*config.PRICING['cache_read_per_mtok']+outgoing*config.PRICING['output_per_mtok'])/1e6
-            finally:c.close()
-        except sqlite3.Error:
-            pass  # The worker may still be creating its database on this poll.
+    config_json = read_json(WEB / job_id / 'config.json', {})
+    state['tagging_mode'] = config_json.get('tagging_mode', 'source')
+    state['auto_accepted_crops'] = len(read_json(WEB / job_id / 'auto_crop_reviews.json', []))
+    state['can_cancel'] = state['status'] in ('running', 'queued') and job_id in _live
+    state['estimated_cost_usd'] = _job_cost(WEB / job_id / 'paperlab.db',
+                                            state['status'] in ('done', 'failed', 'interrupted'))
     return state
+
+
+def cancel_job(job_id, target_db):
+    """Stop a queued or running import; saved progress is kept and Resume continues it."""
+    with _lock:
+        state = get_job(job_id)
+        if state['target_db'] != str(target_db): raise ValueError('This job belongs to another PaperLab database.')
+        if state['status'] not in ('queued', 'running') or job_id not in _live:
+            raise ValueError('This import is not running.')
+        future, proc = _live[job_id], _procs.get(job_id)
+        _cancelled.add(job_id)
+        message = 'Import cancelled. Resume to continue from saved progress.'
+        if future.cancel():  # still waiting in the queue
+            _cancelled.discard(job_id)
+            _live.pop(job_id, None)
+            saved = read_json(WEB / job_id / 'state.json')
+            saved.update(status='failed', error=message, finished_at=time.time())
+            write_json(WEB / job_id / 'state.json', saved)
+        elif proc is not None and proc.poll() is None:
+            proc.terminate()
+        write_json(WEB / job_id / 'phase.json', {'phase': 'failed', 'error': message})
+    return get_job(job_id)
+
+
+def delete_job(job_id, target_db):
+    """Remove a stopped job's working folder. Completed imports are never deleted."""
+    with _lock:
+        state = get_job(job_id)
+        if state['target_db'] != str(target_db): raise ValueError('This job belongs to another PaperLab database.')
+        if state['status'] not in ('failed', 'interrupted'):
+            raise ValueError('Only stopped imports that were not completed can be removed.')
+        if job_id in _live and not _live[job_id].done():
+            raise ValueError('Cancel this import before removing it.')
+        _live.pop(job_id, None)
+        shutil.rmtree(WEB / job_id)
+    return {'removed': job_id}
+
+
+def job_questions(job_id):
+    """Per-question outcome table for one import job."""
+    get_job(job_id)  # validates the id and that the job exists
+    folder = WEB / job_id
+    manifest = read_json(folder / 'manifest.json')
+    if not manifest: return []
+    progress = read_json(folder / 'progress.json', {'questions': {}}).get('questions', {})
+    auto = {}
+    for entry in read_json(folder / 'auto_crop_reviews.json', []):
+        auto.setdefault(entry['group'], []).append(entry['filename'])
+    rows = []
+    for item in manifest['items']:
+        saved = progress.get(item['number']) or {}
+        status = ('done' if saved.get('ok') else 'review' if saved.get('needs_review')
+                  else 'failed' if saved.get('error') else 'pending')
+        first = (item.get('question_rows') or [{}])[0]
+        rows.append({'number': item['number'], 'label': first.get('title') or item.get('source_number') or item['group'],
+                     'status': status, 'error': saved.get('error'), 'turns': saved.get('turns'),
+                     'elapsed_sec': saved.get('elapsed_sec'), 'auto_accepted': auto.get(item['group'], [])})
+    return rows
 
 
 def list_jobs():
@@ -194,12 +277,22 @@ def _run(job_id, environment):
         state = read_json(folder / 'state.json'); state.update(status='running', error=None)
         write_json(folder / 'state.json', state)
     try:
-        env = {**os.environ, **environment, 'PAPERLAB_REPO': str(APP), 'PYTHONUNBUFFERED': '1'}
+        env = {**os.environ, **environment, 'PAPERLAB_REPO': str(APP), 'PYTHONUNBUFFERED': '1',
+               'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8:backslashreplace'}
+        _cancelled.discard(job_id)
         with (folder / 'worker.log').open('a', encoding='utf-8') as log:
-            result = subprocess.run([worker_python(), str(ROOT / 'web_worker.py'), str(folder / 'config.json')],
+            proc = subprocess.Popen([worker_python(), str(ROOT / 'web_worker.py'), str(folder / 'config.json')],
                                     cwd=APP, env=env, stdout=log, stderr=log,
                                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        if result.returncode:
+            _procs[job_id] = proc
+            try:
+                returncode = proc.wait()
+            finally:
+                _procs.pop(job_id, None)
+        if job_id in _cancelled:
+            _cancelled.discard(job_id)
+            raise RuntimeError('Import cancelled. Resume to continue from saved progress.')
+        if returncode:
             detail = read_json(folder / 'phase.json', {}).get('error')
             raise RuntimeError(detail or 'Chapter conversion stopped. Resume to retry using the saved progress.')
         published = publish_chapter(folder, state['target_db'], state['target_outputs'], state['target_data'])
@@ -260,38 +353,85 @@ def resume_job(job_id, target_db, environment):
         state = get_job(job_id)
         if state['target_db'] != str(target_db): raise ValueError('This job belongs to another PaperLab database.')
         if state['status'] in ('done', 'running', 'queued'): return state
+        check_append_queue(state.get('append_paper_id'), target_db)
         state.update(status='queued', error=None)
         write_json(WEB / job_id / 'state.json', state)
         launch(job_id, environment)
         return state
 
 
-def start_selection(name, resource_ids, source_token, filters, target_db, target_outputs, target_data, environment):
+def check_append_queue(paper_id, target_db):
+    if paper_id is not None and any(
+        job.get('append_paper_id') == paper_id and job['target_db'] == str(target_db)
+        and job['status'] in ('queued', 'running') for job in list_jobs()
+    ):
+        raise ValueError('An addition is already processing for this collection. Wait for it to finish.')
+
+
+def start_selection(name, resource_ids, source_token, filters, target_db, target_outputs, target_data,
+                    environment, tagging_mode='source', append_paper_id=None, content_mode='full'):
     from importer_EJEE import selection
+    from importer_EJEE.publish import collection_manifests, question_keys
     name=name.strip()
-    if not name or len(name)>180:raise ValueError('Enter a collection name (up to 180 characters).')
+    if tagging_mode not in ('source', 'paperlab'): raise ValueError('Invalid tagging mode')
+    if content_mode not in ('key', 'full'): raise ValueError('Invalid transcription mode')
+    if append_paper_id is None and (not name or len(name)>180):
+        raise ValueError('Enter a collection name (up to 180 characters).')
     with _lock:
         if selection.source_token()!=source_token:
             raise ValueError('The connected EJEE source changed. Refresh the filters before importing.')
         selected=selection.snapshot(resource_ids)
-        key=hashlib.sha256(('selection:'+selected['fingerprint']).encode()).hexdigest()
+        identity = 'selection:' + selected['fingerprint']
+        skipped = 0
+        if append_paper_id is not None:
+            with sqlite3.connect(target_db) as c:
+                paper = c.execute("SELECT paper_name FROM papers WHERE id=? AND status='done' AND exam_type='EJEE collection'",
+                                  (append_paper_id,)).fetchone()
+            if not paper:
+                raise FileNotFoundError('The destination collection is no longer available.')
+            name = paper[0]
+            manifests = collection_manifests(Path(target_data) / 'archive' / 'ejee' / str(append_paper_id))
+            if not manifests:
+                raise ValueError('The destination collection has no import history.')
+            existing = question_keys(item for batch in manifests for item in batch['items'])
+            items = selected['items']
+            selected['items'] = [item for item in items if item['source_key'] not in existing]
+            skipped = len(items) - len(selected['items'])
+            if not selected['items']:
+                return {'status':'done', 'paper_id':append_paper_id, 'already_imported':True, 'skipped':skipped}
+            keys = {item['source_key'] for item in selected['items']}
+            question_ids = {row['id'] for item in selected['items'] for row in item['question_rows']}
+            selected['selected_resource_ids'] = [rid for rid in selected['selected_resource_ids'] if rid in question_ids]
+            selected['included_resource_ids'] = [
+                row['id'] for item in selected['items'] for side in ('question_rows', 'solution_rows')
+                for row in item[side]]
+            identity = f'append:{append_paper_id}:' + ','.join(sorted(keys))
+        if content_mode == 'key':
+            identity += ':key-only'
+        key=hashlib.sha256(identity.encode()).hexdigest()
         imported=completed_imports(target_db)
         if key in imported:return {'status':'done','paper_id':imported[key],'already_imported':True}
         existing=next((j for j in list_jobs() if j['source_key']==key and j['target_db']==str(target_db) and j['status']!='done'),None)
         if existing:return existing
+        check_append_queue(append_paper_id, target_db)
         sources=list(dict.fromkeys(r['source'] or 'Unspecified source' for item in selected['items'] for r in item['question_rows']))
         job_id=uuid4().hex;folder=WEB/job_id
         write_json(folder/'selection.json',selected)
         cfg={**settings(),'selection_snapshot':str(folder/'selection.json'),'collection_name':name,
-             'extractor_mode':'mapped-pair','cost_max_turns_per_question':12,
+             'extractor_mode':'mapped-pair','cost_max_turns_per_question':12,'tagging_mode':tagging_mode,
+             'content_mode':content_mode,
              'selection_filters':filters,'book_source':sources[0] if len(sources)==1 else 'Mixed EJEE sources',
              'group_pattern':'','chapter':'selection','chapter_title':name,
              'run_dir':folder.relative_to(ROOT).as_posix(),'max_turns_per_question':36,
              'target_db':str(target_db),'source_key':key}
+        if append_paper_id is not None:
+            cfg['append_paper_id'] = append_paper_id
         write_json(folder/'config.json',cfg)
         state={'id':job_id,'source_key':key,'book':cfg['book_source'],'chapter':name,'total':len(selected['items']),
                'status':'queued','phase':'queued','created_at':time.time(),'target_db':str(target_db),
                'target_outputs':str(target_outputs),'target_data':str(target_data),'paper_id':None,'error':None,
-               'kind':'selection','selected_resource_ids':selected['selected_resource_ids']}
+               'kind':'selection','content_mode':content_mode,'selected_resource_ids':selected['selected_resource_ids']}
+        if append_paper_id is not None:
+            state.update(append_paper_id=append_paper_id, skipped=skipped)
         write_json(folder/'state.json',state);launch(job_id,environment)
         return state

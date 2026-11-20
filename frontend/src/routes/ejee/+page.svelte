@@ -1,9 +1,11 @@
 <script>
-	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { api } from '$lib/api.js';
 	import EjeeSelection from '$lib/components/EjeeSelection.svelte';
+	import EjeeJobCard from '$lib/components/EjeeJobCard.svelte';
 	import { role, loginOpen } from '$lib/stores.js';
 	const admin = $derived($role === 'archivist');
+	const appendPaperId = $derived(Number($page.url.searchParams.get('append')) || null);
 	let catalogue = $state(null);
 	let sourceDb = $state('');
 	let assetRoot = $state('');
@@ -17,9 +19,8 @@
 	let sourceOpen = $state(false);
 	let usage = $state(null);
 	const book = $derived(catalogue?.books?.find(b => b.id === bookId));
-	const phases = {queued:'Queued', preparing:'Reading mapped source images', converting:'Converting questions and solutions',
-		diagrams:'Exporting diagram PNGs', formatting:'Checking display format', syllabus:'Loading current syllabus',
-		classifying:'Running fresh topic classification', verifying:'Verifying collection', publishing:'Adding to EJEE library', done:'Complete'};
+	const active = $derived(jobs.some(j => ['queued', 'running'].includes(j.status)));
+	const attention = $derived(jobs.filter(j => ['failed', 'interrupted'].includes(j.status)).length);
 
 	async function refreshCatalogue() {
 		const result = await api.getEjeeCatalogue();
@@ -51,31 +52,29 @@
 			await refreshJobs();
 		} catch(e) { error = e.message; } finally { starting = false; }
 	}
-	async function resume(id) {
-		error = '';
-		try { await api.resumeEjeeJob(id); await refreshJobs(); }
-		catch(e) { error = e.message; }
-	}
 	function toggle(id, checked) {
 		selected = checked ? [...new Set([...selected,id])] : selected.filter(v => v !== id);
 	}
 	$effect(() => {
 		if (!admin) { catalogue = null; jobs = []; return; }
-		let active = true, timer;
+		let live = true;
 		(async () => {
 			loading = true;
-			try { await refreshCatalogue(); await refreshJobs(); if(active) error = ''; }
-			catch(e) { if(active) error = e.message; }
-			finally { if(active) loading = false; }
+			try { await refreshCatalogue(); await refreshJobs(); if(live) error = ''; }
+			catch(e) { if(live) error = e.message; }
+			finally { if(live) loading = false; }
 		})();
-		timer = setInterval(() => {
-			if (active) refreshJobs().catch(e => { if(active) error = e.message; });
-		}, 3000);
-		return () => { active = false; clearInterval(timer); };
+		return () => { live = false; };
+	});
+	// Poll quickly only while an import is running; this effect re-arms when that changes.
+	$effect(() => {
+		if (!admin) return;
+		const timer = setInterval(() => { refreshJobs().catch(e => { error = e.message; }); }, active ? 3000 : 20000);
+		return () => clearInterval(timer);
 	});
 </script>
 
-<svelte:head><title>EJEE Import - PaperLab</title></svelte:head>
+<svelte:head><title>{attention ? `(${attention}) ` : ''}EJEE Import - PaperLab</title></svelte:head>
 <h1>EJEE question import</h1>
 <p><a class="pl-btn" href="/ejee/library">Open EJEE collections →</a></p>
 <p class="pl-sub">Filter your EJEE database and process only the questions you select. Named collections, mapped solutions and diagrams use a separate database and folder.</p>
@@ -99,8 +98,8 @@
 	</section>
 	{#if loading && !catalogue}<p role="status">Reading EJEE catalogue…</p>{/if}
 	{#if catalogue?.connected}
-		{#key catalogue.settings.source_db + '|' + catalogue.settings.asset_root}
-			<EjeeSelection aiReady={catalogue.ai_ready} onQueued={refreshJobs} />
+		{#key catalogue.settings.source_db + '|' + catalogue.settings.asset_root + '|' + appendPaperId}
+			<EjeeSelection aiReady={catalogue.ai_ready} onQueued={refreshJobs} {appendPaperId} />
 		{/key}
 		<details class="pl-card"><summary>Optional: import complete mapped textbook chapters</summary>
 		<section>
@@ -133,15 +132,7 @@
 		{#if usage}<p class="hint">EJEE imports only: ${usage.total_usd.toFixed(4)} estimated API cost · recorded separately from question-paper processing.</p>{/if}
 		{#if !jobs.length}<p>No EJEE imports started from this app yet.</p>{/if}
 		{#each jobs as job (job.id)}
-			<article class="job">
-				<div class="row"><div><strong>{job.chapter}</strong><small>{job.book}</small></div><span class="badge">{job.status}</span></div>
-				<p>{phases[job.phase] || job.phase} · {job.converted || 0}/{job.total} converted · {job.classified || 0}/{job.total} classified</p>
-				<p class="hint">Estimated API usage: ${(job.estimated_cost_usd || 0).toFixed(4)}</p>
-				<progress max={job.total * 2 || 1} value={(job.converted || 0)+(job.classified || 0)} aria-label={`${job.chapter} progress`}></progress>
-				{#if job.error}<p class="pl-error">{job.error}</p>{/if}
-				{#if ['failed','interrupted'].includes(job.status)}<button class="pl-btn" onclick={() => resume(job.id)}>Resume import</button>{/if}
-				{#if job.status === 'done' && job.paper_id}<a class="pl-btn" href={`/ejee/library/${job.paper_id}`}>Open imported collection →</a>{/if}
-			</article>
+			<EjeeJobCard {job} onChange={refreshJobs} onError={message => error = message} />
 		{/each}
 	</section>
 {/if}
@@ -160,9 +151,6 @@
 	small { display:block; margin-top:4px; opacity:.72; }
 	.hint { font-size:.9rem; opacity:.8; line-height:1.6; }
 	.notice { padding:12px; border:1px solid var(--pl-line); border-radius:8px; }
-	.job { border-top:1px solid var(--pl-line); padding:18px 0; }
-	progress { width:100%; margin-bottom:12px; accent-color:var(--pl-accent); }
-	.badge { font-size:.85rem; padding:5px 9px; border:1px solid var(--pl-line); border-radius:20px; }
 	.pl-error { margin:12px 0; }
 	@media(max-width:650px) { .row,.chapter { align-items:flex-start; flex-direction:column; } .chapter-label { flex-direction:row; } }
 </style>

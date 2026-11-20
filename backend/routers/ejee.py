@@ -25,6 +25,57 @@ def environment():
             'LLM_USE_RESPONSES_API': str(config.LLM_USE_RESPONSES_API).lower()}
 
 
+class ReviewCropBody(BaseModel):
+    left: float
+    top: float
+    right: float
+    bottom: float
+    rotate: float = 0
+    confirm_edges: bool = False
+
+
+@router.get('/jobs/{job_id}/crop-review')
+def job_crop_review(job_id: str):
+    from importer_EJEE.crop_review import review_figures
+    try:
+        _, figures = review_figures(job_id)
+        return [{k:row[k] for k in ('number','name','page','side','box','saved')} for row in figures.values()]
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.get('/jobs/{job_id}/crop-review/{number}/{name}/{page}')
+def job_crop_source(job_id: str, number: str, name: str, page: int):
+    from importer_EJEE.crop_review import review_figures, review_image
+    try:
+        run, figures = review_figures(job_id)
+        row = figures.get((number, name, page))
+        if not row:
+            raise FileNotFoundError('Crop review figure not found.')
+        return Response(review_image(run, row), media_type='image/png')
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.post('/jobs/{job_id}/crop-review/{number}/{name}/{page}/{action}')
+def job_crop_edit(job_id: str, number: str, name: str, page: int,
+                  action: Literal['preview', 'save'], body: ReviewCropBody):
+    from importer_EJEE.crop_review import edit_crop
+    try:
+        image, edges = edit_crop(job_id, number, name, page,
+                                (body.left, body.top, body.right, body.bottom),
+                                body.rotate, action == 'save', body.confirm_edges)
+        if action == 'preview':
+            return Response(image, media_type='image/png', headers={'X-Crop-Edge-Warnings': ','.join(edges)})
+        return Response(status_code=204)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+class TitleBody(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+
+
 class SourceBody(BaseModel):
     source_db: str = Field(min_length=1, max_length=4096)
     asset_root: str = Field(min_length=1, max_length=4096)
@@ -37,15 +88,21 @@ class ImportBody(BaseModel):
 
 class SearchBody(BaseModel):
     filters: dict = Field(default_factory=dict)
+    node_ids: list[int] = Field(default_factory=list)
     offset: int = Field(default=0,ge=0)
     limit: int = Field(default=30,ge=1,le=100)
 
 
-class SelectionBody(BaseModel):
-    name: str = Field(min_length=1,max_length=180)
+class SelectionQuestions(BaseModel):
     resource_ids: list[int] = Field(min_length=1,max_length=selection.MAX_SELECTION)
     source_token: str = Field(pattern=r'^[a-f0-9]{64}$')
     filters: dict = Field(default_factory=dict)
+    tagging_mode: Literal['source', 'paperlab'] = 'source'
+    content_mode: Literal['key', 'full'] = 'full'
+
+
+class SelectionBody(SelectionQuestions):
+    name: str = Field(min_length=1,max_length=180)
 
 
 @router.get('/filters')
@@ -56,7 +113,13 @@ def filters():
 
 @router.post('/questions/search')
 def search_questions(body: SearchBody):
-    try:return selection.search(body.filters,body.offset,body.limit)
+    try:
+        filters = {**body.filters, 'node_ids': body.node_ids} if body.node_ids else body.filters
+        result = selection.search(filters,body.offset,body.limit)
+        imported = library.imported_index()
+        for item in result['items']:
+            item['imported_in'] = imported.get(item['selection_key'])
+        return {**result, 'applied_node_ids': filters.get('node_ids', [])}
     except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
 
 
@@ -74,12 +137,22 @@ def question_details(resource_id: int,source_token: str|None=None):
 
 @router.post('/selections',status_code=202)
 def import_selection(body: SelectionBody):
+    return queue_selection(body, name=body.name)
+
+
+@router.post('/collections/{paper_id}/questions', status_code=202)
+def append_selection(paper_id: int, body: SelectionQuestions):
+    return queue_selection(body, append_paper_id=paper_id)
+
+
+def queue_selection(body: SelectionQuestions, name='', append_paper_id=None):
     if not config.LLM_API_KEY or 'paste-your-key' in config.LLM_API_KEY:
         raise HTTPException(400,'Configure the PaperLab Meta API key before importing.')
     try:
         target=library.store()
-        return service.start_selection(body.name,body.resource_ids,body.source_token,body.filters,
-            target['db'],target['outputs'],target['data'],environment())
+        return service.start_selection(name,body.resource_ids,body.source_token,body.filters,
+            target['db'],target['outputs'],target['data'],environment(),tagging_mode=body.tagging_mode,
+            append_paper_id=append_paper_id, content_mode=body.content_mode)
     except (ValueError,OSError,service.sqlite3.Error) as exc:fail(exc)
 
 
@@ -133,6 +206,30 @@ def resume(job_id: str):
         fail(exc)
 
 
+@router.post('/jobs/{job_id}/cancel')
+def cancel(job_id: str):
+    try:
+        return service.cancel_job(job_id, library.store()['db'])
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.delete('/jobs/{job_id}')
+def remove(job_id: str):
+    try:
+        return service.delete_job(job_id, library.store()['db'])
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@router.get('/jobs/{job_id}/questions')
+def job_questions(job_id: str):
+    try:
+        return service.job_questions(job_id)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
 @router.get('/usage')
 def usage():
     result=library.usage()
@@ -152,6 +249,14 @@ def selection_usage():
 @library_router.get('/papers')
 def library_papers():
     return library.papers()
+
+
+@library_router.patch('/papers/{paper_id}', dependencies=[Depends(require_admin)])
+def rename_paper(paper_id: int, body: TitleBody):
+    try:
+        return library.rename(paper_id, body.title)
+    except (ValueError, OSError) as exc:
+        fail(exc)
 
 
 @library_router.get('/papers/{paper_id}/questions')

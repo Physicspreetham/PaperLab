@@ -1,17 +1,49 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { page } from '$app/stores';
+	import { pushState } from '$app/navigation';
+	import { createViewerFullscreen } from '$lib/ejeeGallery.js';
 	import { api } from '$lib/api.js';
 	import EjeeImageViewer from './EjeeImageViewer.svelte';
 	import EjeeImportCartButton from './EjeeImportCartButton.svelte';
-	let { aiReady = false, onQueued = async () => {} } = $props();
+	let { aiReady = false, onQueued = async () => {}, appendPaperId = null } = $props();
+	let destination = $state(null);
 	let facets = $state(null), rows = $state([]), total = $state(0), offset = $state(0);
 	let busy = $state(false), loading = $state(true), error = $state(''), message = $state('');
-	let sourceFind = $state(''), sources = $state([]), moduleId = $state(''), chapterId = $state(''), weekId = $state(''), topicId = $state('');
+	let sourceFind = $state(''), sources = $state([]), moduleId = $state(''), chapterId = $state(''), weekId = $state(''), topicIds = $state([]);
 	let q = $state(''), model = $state(''), level = $state(''), section = $state(''), exam = $state(''), year = $state(''), status = $state('');
 	let fav = $state(false), altered = $state(false), chosen = $state({}), name = $state(''), openPreview = $state(null);
 	let appliedFilters = $state({}), existingPaper = $state(null);
-	let requestVersion = 0;
+	let requestVersion = 0, viewerGeneration = 0, historyOwned = false, closeRequested = false, fullscreen;
+	let lastViewed = $state(null);
+	const thumbnails = new Map();
+	function thumbnailAnchor(node,id) { thumbnails.set(id,node); return {destroy(){thumbnails.delete(id);}}; }
+	function openImage(id) {
+		if(closeRequested) return;
+		viewerGeneration++; openPreview=id; lastViewed=id;
+		fullscreen?.enter();
+		historyOwned=true; pushState('', {...$page.state,ejeeViewer:true});
+	}
+	function requestClose() {
+		if(closeRequested) return; closeRequested=true;
+		if(historyOwned && $page.state.ejeeViewer) window.history.back();
+		else finishClose();
+	}
+	async function finishClose() {
+		closeRequested=true;
+		const id=openPreview; viewerGeneration++; historyOwned=false;
+		lastViewed=id; openPreview=null; loading=false;
+		await fullscreen?.leave(); await tick();
+		await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+		const card=thumbnails.get(id);
+		card?.querySelector('.thumbnail')?.focus({preventScroll:true});
+		card?.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+		closeRequested=false;
+	}
+	$effect(()=>{const viewerState=$page.state.ejeeViewer;if(historyOwned && !viewerState) finishClose();});
 	const PAGE = 30;
+	let reclassify = $state(false);
+	let contentMode = $state('full');
 	const count = $derived(Object.keys(chosen).length);
 	const previewRow = $derived(rows.find(r => r.id === openPreview));
 	const previewIndex = $derived(rows.findIndex(r => r.id === openPreview));
@@ -33,15 +65,23 @@
 	const typeLabels = {objective:'Objective',subjective:'Subjective',jmain:'PYQ Mains',jadv:'PYQ Advanced',olympiad:'Olympiad',pyq:'PYQ'};
 	function label(value) { return value === '__none__' ? 'Not tagged' : value; }
 	function sourceToggle(value,checked) { sources = checked ? [...new Set([...sources,value])] : sources.filter(v => v !== value); }
-	function filters() { return { source:sources, node_id:topicId || weekId || chapterId || moduleId || null,
+	function toggleTopic(id, checked) { topicIds = checked ? [...topicIds, id] : topicIds.filter(value => value !== id); }
+	function filters() { return { source:sources, node_ids:topicIds, node_id:weekId || chapterId || moduleId || null,
 		q, qtype:model, difficulty:level, type:section, exam, year, status, fav, altered }; }
 	async function search(next = 0,apply = false,previewEdge = null) {
+		const viewerRequest=viewerGeneration;
 		const version = ++requestVersion; loading = true; error = '';
 		const selectedFilters = apply ? filters() : appliedFilters;
 		try {
-			const data = await api.searchEjeeQuestions({filters:selectedFilters,offset:next,limit:PAGE});
-			if (version !== requestVersion) return;
+			const data = await api.searchEjeeQuestions({filters:selectedFilters,node_ids:selectedFilters.node_ids,offset:next,limit:PAGE});
+			if (version !== requestVersion || (previewEdge && viewerRequest!==viewerGeneration)) return;
 			if (data.source_token !== facets.source_token) throw new Error('The EJEE source changed. Reload this page before selecting more questions.');
+			if (selectedFilters.node_ids?.length && !selectedFilters.node_ids.every(id => data.applied_node_ids?.includes(id))) {
+				rows = []; total = 0; offset = 0; openPreview = null;
+				appliedFilters = selectedFilters;
+				throw new Error('The running PaperLab backend has not loaded the subtopic filter update. Reopen PaperLab from its launcher, then apply the filters again.');
+			}
+			if(apply) lastViewed=null;
 			rows = data.items; total = data.total; offset = next; appliedFilters = selectedFilters; openPreview = previewEdge === 'first' ? data.items[0]?.id : previewEdge === 'last' ? data.items.at(-1)?.id : null;
 		} catch(e) { if(version === requestVersion) error = e.message; }
 		finally { if(version === requestVersion) loading = false; }
@@ -64,38 +104,73 @@
 		for (const row of rows) if (row.ready && Object.keys(next).length < facets.max_selection) next[row.selection_key] = row;
 		chosen = next;
 	}
+	async function selectAllMatching() {
+		busy = true; error = ''; message = '';
+		try {
+			const next = {...chosen};
+			for (let from = 0; from < total && Object.keys(next).length < facets.max_selection; from += 100) {
+				const data = await api.searchEjeeQuestions({filters:appliedFilters,node_ids:appliedFilters.node_ids,offset:from,limit:100});
+				if (data.source_token !== facets.source_token) throw new Error('The EJEE source changed. Reload this page before selecting more questions.');
+				for (const row of data.items) if (row.ready && Object.keys(next).length < facets.max_selection) next[row.selection_key] = row;
+			}
+			chosen = next; existingPaper = null;
+			if (total > facets.max_selection) message = `Selection is limited to ${facets.max_selection} questions; the first ${facets.max_selection} eligible matches were added.`;
+		} catch(e) { error = e.message; } finally { busy = false; }
+	}
 	function clearFilters() {
-		sources=[];moduleId='';chapterId='';weekId='';topicId='';q='';model='';level='';section='';exam='';year='';status='';fav=false;altered=false;
+		sources=[];moduleId='';chapterId='';weekId='';topicIds=[];q='';model='';level='';section='';exam='';year='';status='';fav=false;altered=false;
 		search(0,true);
 	}
 	async function start() {
 		busy = true; error = ''; message = ''; existingPaper = null;
 		try {
-			const result = await api.importEjeeSelection({name:name.trim(),resource_ids:Object.values(chosen).map(r => r.id),
-				source_token:facets.source_token,filters:appliedFilters});
+			const selection = {resource_ids:Object.values(chosen).map(r => r.id),
+				source_token:facets.source_token,filters:appliedFilters,tagging_mode:reclassify ? 'paperlab' : 'source',
+				content_mode:contentMode};
+			const result = appendPaperId
+				? await api.appendEjeeSelection(appendPaperId, selection)
+				: await api.importEjeeSelection({name:name.trim(), ...selection});
 			if (result.already_imported) {
-				existingPaper = result.paper_id; message = 'These exact questions are already imported. No additional conversion was started.';
+				existingPaper = result.paper_id; message = appendPaperId
+					? 'All selected questions are already in this collection.'
+					: 'These exact questions are already imported. No additional conversion was started.';
 			} else {
-				message = `${result.total} selected questions queued as “${result.chapter}”. Mapped solutions stay attached. Follow progress below.`;
+				message = ['failed', 'interrupted'].includes(result.status)
+					? 'This batch already exists. Use Resume import in Import progress to continue.'
+					: appendPaperId
+					? `${result.total} new questions queued for "${result.chapter}".`
+					: `${result.total} selected questions queued as "${result.chapter}". Mapped solutions stay attached. Follow progress below.`;
+				if (result.skipped) message += ` ${result.skipped} already in the collection.`;
 				chosen = {}; await onQueued();
 			}
 		} catch(e) { error = e.message; } finally { busy = false; }
 	}
 	onMount(() => {
 		let active = true;
+		fullscreen=createViewerFullscreen(document);
+		const exited=()=>{if(openPreview && fullscreen.owns() && !document.fullscreenElement)requestClose();};
+		document.addEventListener('fullscreenchange',exited);
 		(async () => {
 			try {
-				const result = await api.getEjeeFilters(); if(!active) return; facets = result;
+				const [result, paper] = await Promise.all([
+					api.getEjeeFilters(), appendPaperId ? api.getPaper(appendPaperId, 'ejee') : null
+				]);
+				if(!active) return;
+				facets = result; destination = paper;
 				await search(0,true);
 			} catch(e) { if(active) {error = e.message; loading = false;} }
 		})();
-		return () => { active = false; requestVersion++; };
+		return () => { active = false; requestVersion++; viewerGeneration++; document.removeEventListener('fullscreenchange',exited); fullscreen.leave(); };
 	});
 </script>
 
 <section class="pl-card picker">
-	<h2>Select questions from EJEE</h2>
-	<p>Use EJEE's source and syllabus filters. Select individual questions across pages, then save the selection as one named collection. No textbook chapter mapping is required.</p>
+	<h2>{appendPaperId ? 'Add more questions' : 'Select questions from EJEE'}</h2>
+	{#if appendPaperId}
+		{#if destination}<p>Adding to <a href={`/ejee/library/${appendPaperId}`}>{destination.title}</a>. Select the additional questions below.</p>{/if}
+	{:else}
+		<p>Use EJEE's source and syllabus filters to select questions across pages and save them as a named collection.</p>
+	{/if}
 	{#if error}<p class="pl-error" role="alert">{error}</p>{/if}
 	{#if facets}
 		<form onsubmit={e => {e.preventDefault(); search(0,true);}}>
@@ -107,10 +182,19 @@
 				<button class="pl-btn" type="button" onclick={() => sources=[]}>Clear source filter</button>
 			</details>
 			<div class="filter-grid">
-				<label>Module<select bind:value={moduleId} onchange={() => {chapterId='';weekId='';topicId='';}}><option value="">All modules</option>{#each modules as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
-				<label>Chapter<select bind:value={chapterId} onchange={() => {weekId='';topicId='';}}><option value="">All chapters</option>{#each chapters as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
-				<label>Week / unit<select bind:value={weekId} onchange={() => topicId=''}><option value="">All weeks</option>{#each weeks as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
-				<label>Subtopic<select bind:value={topicId}><option value="">All subtopics</option>{#each topics as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
+				<label>Module<select bind:value={moduleId} onchange={() => {chapterId='';weekId='';topicIds=[];}}><option value="">All modules</option>{#each modules as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
+				<label>Chapter<select bind:value={chapterId} onchange={() => {weekId='';topicIds=[];}}><option value="">All chapters</option>{#each chapters as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
+				<label>Week / unit<select bind:value={weekId} onchange={() => topicIds=[]}><option value="">All weeks</option>{#each weeks as n}<option value={String(n.id)}>{n.name}</option>{/each}</select></label>
+				<details class="subtopics">
+					<summary>Subtopics — {topicIds.length ? `${topicIds.length} selected` : 'All subtopics'}</summary>
+					<div class="source-list">
+						{#each topics as n (n.id)}
+							<label><input type="checkbox" checked={topicIds.includes(n.id)} onchange={e => toggleTopic(n.id,e.currentTarget.checked)} /> <span>{n.name}</span></label>
+						{/each}
+						{#if !topics.length}<p>No subtopics in this selection.</p>{/if}
+					</div>
+					<button type="button" class="pl-btn" disabled={!topicIds.length} onclick={() => topicIds=[]}>Clear subtopics</button>
+				</details>
 				<label>Model / question type<select bind:value={model}><option value="">All models</option>{#each facets.qtype as o}<option value={o.value}>{label(o.value)} ({o.count})</option>{/each}</select></label>
 				<label>Level<select bind:value={level}><option value="">All levels</option>{#each facets.difficulty as o}<option value={o.value}>{label(o.value)}</option>{/each}</select></label>
 				<label>Section<select bind:value={section}><option value="">All question sections</option>{#each facets.type as o}<option value={o.value}>{typeLabels[o.value] || label(o.value)}</option>{/each}</select></label>
@@ -125,18 +209,20 @@
 	{/if}
 	{#if loading}<p role="status">Reading EJEE questions…</p>{/if}
 	{#if facets}
-		<div class="selection-bar"><strong>Import cart · {count} questions selected</strong><button class="pl-btn" disabled={!rows.length || loading} onclick={selectPage}>Select eligible questions on this page</button><button class="pl-btn" disabled={!count} onclick={() => chosen={}}>Clear selection</button></div>
+		<div class="selection-bar"><strong>Import cart · {count} questions selected</strong><button class="pl-btn" disabled={!rows.length || loading} onclick={selectPage}>Select eligible questions on this page</button><button class="pl-btn" disabled={!rows.length || loading || busy || total <= rows.length} onclick={selectAllMatching}>Select all {Math.min(total, facets.max_selection).toLocaleString()} matching</button><button class="pl-btn" disabled={!count} onclick={() => chosen={}}>Clear selection</button></div>
 		<p class="muted">Click a thumbnail for the large viewer; scroll over its image to slide questions. Cart icons add to the import selection.</p>
 		<p class="muted">{total.toLocaleString()} matching question cards · {rows.length ? offset+1 : 0}–{Math.min(offset+PAGE,total)} shown. Selections stay when you change filters or pages; linked continuation cards count as one question.</p>
 		<div class="results" aria-busy={loading}>
 			{#each rows as row (row.id)}
-				<article class:chosen={!!chosen[row.selection_key]}>
+				<article class:chosen={!!chosen[row.selection_key]} class:last-viewed={lastViewed===row.id} use:thumbnailAnchor={row.id}>
 					<div class="card-actions"><label class="question-choice"><input type="checkbox" aria-label={`Select ${row.title}`} checked={!!chosen[row.selection_key]} disabled={cannotSelect(row)} onchange={e => toggle(row,e.currentTarget.checked)} /><strong>{row.title}</strong></label>
 						<EjeeImportCartButton selected={!!chosen[row.selection_key]} disabled={cannotSelect(row)} title={row.title} onToggle={() => toggle(row,!chosen[row.selection_key])} /></div>
-					<button class="thumbnail" type="button" disabled={!row.ready} aria-label={`Open full image for ${row.title}`} onclick={() => openPreview = row.id}>
+					<button class="thumbnail" type="button" disabled={!row.ready} aria-label={`Open full image for ${row.title}`} onclick={() => openImage(row.id)}>
 						{#if row.ready}<img src={`/api/ejee/questions/${row.id}/preview?size=thumbnail&source_token=${encodeURIComponent(facets.source_token)}`} alt={`Thumbnail of ${row.title}`} loading="lazy" decoding="async" />{:else}<span>Image unavailable</span>{/if}
 					</button>
+					{#if lastViewed===row.id}<span class="last-viewed-label">Last viewed</span>{/if}
 					<p class="card-source">{row.source || 'Unspecified source'}</p>
+					{#if row.imported_in}<p class="imported">✓ Already in <a href={`/ejee/library/${row.imported_in.paper_id}`}>{row.imported_in.title}</a></p>{/if}
 					<p class="path">{row.path}</p><p class="meta">{row.qtype || 'Model not tagged'} · {row.difficulty || 'Not graded'} · {row.solution_parts} solution parts</p>
 					{#if row.issue}<p class="pl-error">{row.issue}</p>{/if}
 				</article>
@@ -147,9 +233,18 @@
 		{#if count}
 			<details class="basket"><summary>Review import cart ({count})</summary>{#each Object.values(chosen) as row (row.selection_key)}<div class="basket-row"><span>{row.title} — {row.source}</span><button class="pl-btn" onclick={() => toggle(row,false)}>Remove</button></div>{/each}</details>
 		{/if}
-		<div class="collection"><label>Collection name<input class="pl-input" bind:value={name} maxlength="180" placeholder="e.g. Electrostatics — selected numerical questions" /></label>
-			<p>Only your selected questions and their own mapped solutions will be converted. Diagrams and fresh PaperLab topic classification are included. The collection appears in the separate EJEE library, without changing the ordinary Archive.</p>
-			<button class="pl-btn pl-btn-primary" disabled={!count || !name.trim() || busy || !aiReady} onclick={start}>{busy ? 'Preparing selection…' : `Process ${count} selected question${count===1 ? '' : 's'}`}</button>
+		<div class="collection">
+			{#if !appendPaperId}<label>Collection name<input class="pl-input" bind:value={name} maxlength="180" placeholder="e.g. Electrostatics - selected numerical questions" /></label>{/if}
+			<label>Transcribe
+				<select class="pl-input" bind:value={contentMode} disabled={busy}>
+					<option value="key">Questions + Key</option>
+					<option value="full">Questions + Key + Solutions</option>
+				</select>
+			</label>
+			<label><input type="checkbox" bind:checked={reclassify} /> Reclassify with PaperLab AI (optional; additional API usage)</label>
+			<small>Original EJEE chapter, topics, tags and difficulty are kept by default.</small>
+			{#if appendPaperId}<p>Questions already in this collection are skipped. New questions are added after processing finishes.</p>{/if}
+			<button class="pl-btn pl-btn-primary" disabled={!count || (appendPaperId ? !destination : !name.trim()) || busy || !aiReady} onclick={start}>{busy ? 'Preparing selection…' : `Process ${count} selected question${count===1 ? '' : 's'}${appendPaperId ? ' and add to collection' : ''}`}</button>
 			{#if !aiReady}<p class="pl-error">Configure the existing PaperLab Meta key to enable conversion.</p>{/if}
 			{#if message}<p role="status">{message}</p>{/if}
 			{#if existingPaper}<a href={`/ejee/library/${existingPaper}`}>Open existing collection →</a>{/if}
@@ -158,10 +253,12 @@
 </section>
 
 {#if previewRow}
-	<EjeeImageViewer row={previewRow} index={offset+previewIndex} {total} sourceToken={facets.source_token} selected={!!chosen[previewRow.selection_key]} disabled={cannotSelect(previewRow)} navigating={loading} onToggle={checked => toggle(previewRow,checked)} onClose={() => openPreview=null} onMove={movePreview} />
+	<EjeeImageViewer row={previewRow} index={offset+previewIndex} {total} sourceToken={facets.source_token} selected={!!chosen[previewRow.selection_key]} disabled={cannotSelect(previewRow)} navigating={loading} onToggle={checked => toggle(previewRow,checked)} onClose={requestClose} onMove={movePreview} onFullscreen={() => fullscreen?.enter()} />
 {/if}
 
 <style>
+	.subtopics { border: 1px solid var(--pl-line); border-radius: 8px; padding: 10px; }
+	.subtopics summary { cursor: pointer; }
 	.picker { margin-top:22px; padding:22px; }
 	h2 { margin:0 0 12px; }
 	.sources,.basket { border:1px solid var(--pl-line); border-radius:10px; padding:14px; margin:18px 0; }
@@ -186,6 +283,8 @@
 	.selection-bar strong { flex:1 0 100%; }
 	.results { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:16px; }
 	article { border:1px solid var(--pl-line); border-radius:10px; padding:16px; }
+	article.last-viewed { outline:3px solid var(--pl-accent, var(--pl-seal)); outline-offset:3px; box-shadow:0 0 0 6px var(--pl-seal-soft); scroll-margin:80px 0; }
+	.last-viewed-label { display:inline-block; margin-top:10px; padding:3px 8px; border-radius:5px; font-size:.75rem; font-weight:700; color:var(--pl-seal); background:var(--pl-seal-soft); }
 	article.chosen { border-color:var(--pl-accent); background:var(--pl-surface); }
 	.question-choice { display:flex; align-items:flex-start; gap:12px; cursor:pointer; }
 	.question-choice input { margin-top:5px; }
@@ -196,6 +295,7 @@
 	.thumbnail { display:flex; align-items:center; justify-content:center; width:100%; height:210px; padding:10px; margin-top:12px; border:1px solid var(--pl-line); border-radius:8px; background:white; cursor:zoom-in; }
 	.thumbnail img { display:block; max-width:100%; max-height:100%; object-fit:contain; }
 	.thumbnail:disabled { cursor:default; opacity:.5; }
+	.imported { font-size:.8rem; margin:4px 0; color:var(--pl-seal); }
 	.card-source { font-size:.85rem; font-weight:600; overflow-wrap:anywhere; }
 	.path { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 	.collection { border-top:1px solid var(--pl-line); padding-top:20px; margin-top:24px; }
