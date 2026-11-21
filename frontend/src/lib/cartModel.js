@@ -27,6 +27,7 @@ export function createCart(name = 'Untitled cart') {
 	return {
 		id: newId(),
 		name: String(name ?? 'Untitled cart').slice(0, 80) || 'Untitled cart',
+		modelPaperId: null,
 		createdAt: now,
 		updatedAt: now,
 		items: []
@@ -109,6 +110,7 @@ export function validateStore(raw) {
 		clean.push({
 			id: typeof c.id === 'string' && c.id ? c.id : newId(),
 			name: String(c.name ?? 'Untitled cart').slice(0, 80) || 'Untitled cart',
+			modelPaperId: typeof c.modelPaperId === 'string' && c.modelPaperId ? c.modelPaperId : null,
 			createdAt: c.createdAt ?? new Date().toISOString(),
 			updatedAt: c.updatedAt ?? new Date().toISOString(),
 			items: good

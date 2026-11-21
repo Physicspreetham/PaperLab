@@ -223,9 +223,26 @@ describe('par section instructions', () => {
 	it('names the answer type for par-scq/par-int/par-num/par-msq', async () => {
 		const { sectionMeta } = await import('../src/lib/sectionMeta.js');
 		assert.match(sectionMeta('par-scq', 4, 2).kind, /SINGLE CORRECT/);
-		assert.match(sectionMeta('par-int', 2, 1).lines[1], /SINGLE DIGIT INTEGER/);
+		assert.match(sectionMeta('par-int', 2, 1).lines[1], /an INTEGER/);
 		assert.match(sectionMeta('par-num', 2, 1).lines[1], /NUMERICAL VALUE/);
 		assert.match(sectionMeta('par-msq', 4, 2).kind, /ONE OR MORE/);
+	});
+	it('prints non-negative whole-number instructions without a single-digit limit', async () => {
+		const { sectionMeta } = await import('../src/lib/sectionMeta.js');
+		for (const type of ['nni', 'par-nni']) {
+			assert.match(sectionMeta(type, 2, 1).kind, /NON-NEGATIVE INTEGER/);
+			assert.match(sectionMeta(type, 2, 1).lines[1], /0, 1, 2/);
+			assert.doesNotMatch(sectionMeta(type, 2, 1).lines[1], /SINGLE DIGIT|0 TO 9/);
+		}
+		assert.match(sectionMeta('par-nni', 2, 1).lines[0], /passage stem/);
+	});
+	it('does not add a digit or sign restriction to general integer sections', async () => {
+		const { sectionMeta } = await import('../src/lib/sectionMeta.js');
+		for (const type of ['int', 'par-int']) {
+			const instruction = sectionMeta(type, 2, 1).lines[1];
+			assert.match(instruction, /an INTEGER/);
+			assert.doesNotMatch(instruction, /SINGLE DIGIT|0 TO 9|NON-NEGATIVE/);
+		}
 	});
 });
 

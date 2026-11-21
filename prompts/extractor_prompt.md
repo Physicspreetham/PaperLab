@@ -15,17 +15,19 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 
 # QUESTION TYPES (read the SECTION header first, not the question alone)
 Each page belongs to a SECTION with an instruction block (e.g. "SECTION-I: Single Correct", "This section contains 6 questions, +3 / -1, one or more correct", "Match List-I with List-II", "Numerical Value", "Paragraph"). That block is the PRIMARY signal for `qtype`. The question image confirms it. Never transcribe the block (per directive 13) -- just read it for typing.
-Decision order per question/group: passage + 2+ subs? -> par-*. Else match table (List-I/II, Columns + combo options)? -> mtx. Else options present? -> scq/msq. Else numeric blank (`___`, `where n=`, `Find K`)? -> int/num. Else -> unknown.
+Decision order per question/group: passage + 2+ subs? -> classify each sub-question's format using the rules below, then choose one par-* code. Else match table (List-I/II, Columns + combo options)? -> mtx. Else answer choices? -> scq/msq. Else numeric response? -> int/nni/num. Else -> unknown.
 Codes for `submit_question qtype` (option labels never matter: A-D, i/ii/iii/iv, 1-4 are all "options"):
 - `scq`: options, only one correct (incl. Assertion-Reason, statement-sets).
 - `msq`: options, one or more correct (`choose option(s)`, key like `A,C`).
-- `int`: no options, integer 0-9 entry/bubble.
-- `num`: no options, decimal/numeric entry (`20.00`, tolerance box).
+- `nni`: no answer choices; the instructions or answer field require a whole-number response and rule out negatives (e.g. "enter a non-negative integer", a digit grid limited to 0–9, or "enter an integer from 0 to 9999"). The number of digits does not determine the type.
+- `int`: other whole-number entry without answer choices. Use for signed integers or for integer entry with no sign restriction stated; e.g. "enter an integer" or "enter a whole-number response from −99 to 99."
+- `num`: other numerical entry, e.g. decimal, rounded or tolerance-based responses, or a general numerical field not restricted to integers. A numerical field stays `num` even if this question's answer happens to be a whole number.
 - `mtx`: match table + combo options (covers 2-list and 3-column).
-- `par-scq/par-msq/par-int/par-num/par-mtx`: passage group whose subs are ALL that format.
-- `par-mix`: passage group with mixed sub-formats.
-- `unknown`: illegible, cut off, or no rule fires -- never guess.
-A group (`31-32_paragraph`) gets ONE par-* code. If the section header is cropped out, fall back to the image; if still unclear, pass `unknown`.
+- `par-scq/par-msq/par-int/par-nni/par-num/par-mtx`: passage group whose subs are ALL that format. Use `par-nni` only when every sub-question has the `nni` format.
+- `par-mix`: passage group with different known sub-formats, including a mix of `int` and `nni`.
+- `unknown`: use only when no supported format fits (e.g. a written proof or symbolic derivation), or the evidence is insufficient after checking the instructions and response field. Condense format variants into the closest supported type when the response format is clear; do not guess when it is not.
+A group (`31-32_paragraph`) gets ONE code. If the section header is cropped out, fall back to the question and its response field; if you cannot establish a uniform or genuinely mixed format, pass `unknown`.
+Classify the required response format, not the actual answer. A key entry `7`, `42`, or `0` is not evidence that the format disallows negative values or decimals; do not solve the question or infer the format from a computed value.
 
 # REPEATED QUESTION NUMBERS (Some papers: each section restarts at 1)
 If two sections reuse the same numbers, a bare number would overwrite the

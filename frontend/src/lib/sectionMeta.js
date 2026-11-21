@@ -9,6 +9,8 @@ const WORDS = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'E
 const wordOf = (n) => (Number.isInteger(n) && n >= 0 && n < WORDS.length ? WORDS[n] : String(n));
 
 const qword = (n) => (n === 1 ? 'question' : 'questions');
+const INTEGER_INSTRUCTION = 'The answer to each question is an INTEGER. Enter a whole number without a decimal point.';
+const NNI_INSTRUCTION = 'The answer to each question is a NON-NEGATIVE INTEGER (0, 1, 2, …). Enter a whole number without a decimal point.';
 
 /**
  * @param atype raw section type (scq, par-scq, ...)
@@ -39,7 +41,15 @@ export function sectionMeta(atype, nq = 0, nstems = 0) {
 				kind: 'INTEGER ANSWER TYPE',
 				lines: [
 					`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)}.`,
-					'The answer to each question is a SINGLE DIGIT INTEGER ranging from 0 TO 9, BOTH INCLUSIVE.'
+					INTEGER_INSTRUCTION
+				]
+			};
+		case 'nni':
+			return {
+				kind: 'NON-NEGATIVE INTEGER ANSWER TYPE',
+				lines: [
+					`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)}.`,
+					NNI_INSTRUCTION
 				]
 			};
 		case 'num':
@@ -79,7 +89,7 @@ export function sectionMeta(atype, nq = 0, nstems = 0) {
 				kind: 'PARAGRAPH — INTEGER ANSWER TYPE',
 				lines: [
 						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
-						'The answer to each question is a SINGLE DIGIT INTEGER ranging from 0 TO 9, BOTH INCLUSIVE.'
+					INTEGER_INSTRUCTION
 					]
 				};
 		case 'par-num':
@@ -112,6 +122,14 @@ export function sectionMeta(atype, nq = 0, nstems = 0) {
 			return {
 				kind: 'GENERAL QUESTIONS',
 				lines: [`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)}. Answer each as directed.`]
+			};
+		case 'par-nni':
+			return {
+				kind: 'PARAGRAPH — NON-NEGATIVE INTEGER ANSWER TYPE',
+				lines: [
+					`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+					NNI_INSTRUCTION
+				]
 			};
 	}
 }

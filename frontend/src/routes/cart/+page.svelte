@@ -1,6 +1,10 @@
 <script>
 	import { cartStore, activeCart, carts, cartCorrupt } from '$lib/carts.js';
 	import CartCard from '$lib/components/CartCard.svelte';
+	import { modelPaperList } from '$lib/modelPapers.js';
+	import {
+		compareModelPaper, groupCartItems, isParagraphType, LEGACY_PARAGRAPH_TYPE, modelQuantity
+	} from '$lib/modelPaperModel.js';
 
 	let newName = $state('');
 	let renameValue = $state('');
@@ -10,6 +14,14 @@
 	let deleteArmed = $state(false);
 
 	const cart = $derived($activeCart);
+	const emptyItems = [];
+	const items = $derived(cart?.items ?? emptyItems);
+	const groups = $derived(groupCartItems(items));
+	const orderedItems = $derived(groups.flatMap(({ type, items }) => items.map((item) => ({ type, item }))));
+	const modelPaper = $derived($modelPaperList.find((p) => p.id === cart?.modelPaperId));
+	const targets = $derived(modelPaper?.counts);
+	const suggestions = $derived(targets ? compareModelPaper(targets, groups) : []);
+	const typeActions = $derived(new Map(suggestions.map(({ type, action }) => [type, action])));
 
 	// Transient toolbar states (rename/create/armed confirms) belong to the
 	// active cart: switching carts resets them so a stale "Confirm delete"
@@ -70,12 +82,15 @@
 				{/each}
 			</select>
 		</label>
-		{#if cart}
-			<span class="tname" aria-live="polite" title={cart.name}>
-				{cart.name} · <strong>{cart.items.length}</strong>
-				{cart.items.length === 1 ? 'question' : 'questions'}
-			</span>
-		{/if}
+		<label class="tselect">
+			<span class="tlabel">Model paper</span>
+			<select aria-label="Model paper" title={modelPaper?.name} value={modelPaper?.id ?? ''} onchange={(e) => carts.setModelPaper(e.currentTarget.value || null)}>
+				<option value="">None</option>
+				{#each $modelPaperList as paper (paper.id)}
+					<option value={paper.id}>{paper.name}</option>
+				{/each}
+			</select>
+		</label>
 		<div class="tactions">
 			<button type="button" class="tbtn" onclick={startCreate}>New</button>
 			{#if cart}
@@ -118,6 +133,21 @@
 			{/if}
 		</div>
 	</div>
+	<div class="model-status" class:visible={!!modelPaper} aria-live="polite">
+		{#if modelPaper}
+			{#if suggestions.length}
+				<ul aria-label="Model paper suggestions">
+					{#each suggestions as suggestion (suggestion.type)}
+						<li class:addition={suggestion.action === 'Add'} class:removal={suggestion.action === 'Remove'}>
+							<strong>{suggestion.action}</strong> {modelQuantity(suggestion.type, suggestion.count)}
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="addition">This cart matches the model paper.</p>
+			{/if}
+		{/if}
+	</div>
 	{#if creating}
 		<div class="tsub">
 			<input
@@ -154,21 +184,20 @@
 	{/if}
 </div>
 
-{#if cart}
-	{#if cart.items.length === 0}
-		<div class="pl-card empty">
-			<p>This cart is empty. <a href="/search">Search questions</a> and press the cart icon on any card, or open a question and use the cart button beside its title.</p>
-		</div>
-	{:else}
-		<div class="grid">
-			{#each cart.items as item (`${item.paperId}/${item.number}`)}
-				<CartCard
-					{item}
-					onRemove={() => carts.remove(item.paperId, item.number)}
-				/>
-			{/each}
-		</div>
-	{/if}
+{#if cart && items.length === 0}
+	<div class="pl-card empty">
+		<p>This cart is empty. <a href="/search">Search questions</a> and press the cart icon on any card, or open a question and use the cart button beside its title.</p>
+	</div>
+{:else if orderedItems.length > 0}
+	<div class="grid">
+		{#each orderedItems as { item, type } (`${item.paperId}/${item.number}`)}
+			<CartCard
+				{item}
+				typeAction={typeActions.get(type) ?? (isParagraphType(type) ? typeActions.get(LEGACY_PARAGRAPH_TYPE) : undefined)}
+				onRemove={() => carts.remove(item.paperId, item.number)}
+			/>
+		{/each}
+	</div>
 {/if}
 
 <style>
@@ -185,7 +214,6 @@
 		margin: 16px 0 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
 	}
 	.tmain {
 		display: flex;
@@ -199,26 +227,37 @@
 		gap: 8px;
 		font-size: 0.82rem;
 		font-weight: 600;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.tlabel {
 		color: var(--pl-ink-soft);
+		flex-shrink: 0;
 	}
 	.tselect select {
 		min-height: 32px;
 		padding: 0 8px;
 		max-width: 240px;
+		min-width: 0;
 		font-size: 0.85rem;
 	}
-	.tname {
-		font-size: 0.9rem;
-		color: var(--pl-ink-soft);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 100%;
+	.model-status.visible {
+		margin-top: 10px;
 	}
-	.tname strong {
-		color: var(--pl-ink);
+	.model-status ul,
+	.model-status p {
+		border-top: 1px solid var(--pl-line);
+		padding: 8px 0 0;
+		margin: 0;
+		font-size: 0.85rem;
+		line-height: 1.6;
+		list-style: none;
+	}
+	.addition {
+		color: var(--pl-pine);
+	}
+	.removal {
+		color: var(--pl-seal-deep);
 	}
 	.tactions {
 		display: flex;
@@ -259,6 +298,7 @@
 	.tsub {
 		display: flex;
 		gap: 8px;
+		margin-top: 10px;
 	}
 	.tsub input {
 		flex: 1;
@@ -284,6 +324,9 @@
 		}
 		.tactions {
 			margin-left: 0;
+		}
+		.tselect select {
+			min-height: 40px;
 		}
 	}
 	.empty a {

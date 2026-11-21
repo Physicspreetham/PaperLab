@@ -4,6 +4,10 @@
  * only what users see is shortened. `value` sent back to the API must
  * always stay the raw code.
  */
+/** Raw question types in paper section order. */
+export const SECTION_TYPES = ['scq', 'msq', 'int', 'nni', 'num', 'mtx',
+	'par-scq', 'par-msq', 'par-int', 'par-nni', 'par-num', 'par-mtx', 'par-mix', 'unknown'];
+
 const SHORT = {
 	scq: 'sca',
 	msq: 'mca',
@@ -13,6 +17,16 @@ const SHORT = {
 
 /** Short display label for one qtype code; unknown codes pass through. */
 export const qtypeLabel = (code) => SHORT[code] ?? code ?? 'unknown';
+
+const INTEGER_LABELS = {
+	int: 'Integer (INT)',
+	nni: 'Non-negative integer (NNI)',
+	'par-int': 'Paragraph: Integer (PAR-INT)',
+	'par-nni': 'Paragraph: Non-negative integer (PAR-NNI)'
+};
+
+/** Expanded labels where distinguishing numeric response formats matters. */
+export const qtypeOptionLabel = (code) => INTEGER_LABELS[code] ?? qtypeLabel(code);
 
 /** Rewrite codes inside preformatted strings (e.g. "scq 4 - msq 3"). */
 export const qtypeLabelAll = (text) =>

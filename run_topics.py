@@ -34,13 +34,13 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 # the 3-15s each call already takes.
 PACE_SEC = float(os.environ.get("TOPICS_PACE_SEC", "1.0"))
 
-TOPICS_RE = re.compile(r"^TOPICS:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
-DIFF_RE = re.compile(r"^DIFFICULTY:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
-SUGG_RE = re.compile(r"^SUGGESTION:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+TOPICS_RE = re.compile(r"^TOPICS:[ \t]*([^\r\n]*)", re.IGNORECASE | re.MULTILINE)
+DIFF_RE = re.compile(r"^DIFFICULTY:[ \t]*([^\r\n]*)", re.IGNORECASE | re.MULTILINE)
+SUGG_RE = re.compile(r"^SUGGESTION:[ \t]*([^\r\n]*)", re.IGNORECASE | re.MULTILINE)
 
 
-def build_topic_list() -> list[tuple[int, str]]:
-    """[(1-based number, 'Module › Chapter › ... › subtopic')] in seed order."""
+def _topic_entries() -> list[tuple[int, str, str]]:
+    """Number, code, and path from one ordered snapshot of the syllabus."""
     database.init_topics()
     conn = database.get_connection()
     try:
@@ -60,50 +60,67 @@ def build_topic_list() -> list[tuple[int, str]]:
         while cur is not None and cur in by_code:
             parts.append(by_code[cur]["name"])
             cur = by_code[cur]["parent"]
-        out.append((n, " › ".join(reversed(parts))))
+        out.append((n, r["code"], " › ".join(reversed(parts))))
     return out
+
+
+def build_topic_list() -> list[tuple[int, str]]:
+    """[(1-based number, 'Module › Chapter › ... › subtopic')] in seed order."""
+    return [(n, path) for n, _, path in _topic_entries()]
 
 
 def topic_codes_by_number() -> dict[int, str]:
     """1-based number -> topic code (same order as build_topic_list)."""
-    database.init_topics()
-    conn = database.get_connection()
-    try:
-        codes = [r["code"] for r in conn.execute(
-            "SELECT code FROM topics WHERE level = 'subtopic' ORDER BY rowid"
-        ).fetchall()]
-    finally:
-        conn.close()
-    return {i + 1: c for i, c in enumerate(codes)}
+    return {n: code for n, code, _ in _topic_entries()}
+
+
+def build_topic_reference() -> tuple[list[str], dict[int, str]]:
+    """Use the same snapshot to prompt and decode, even if the syllabus changes."""
+    entries = _topic_entries()
+    return ([f"Topic {n} — {path}" for n, _, path in entries],
+            {n: code for n, code, _ in entries})
 
 
 def parse_topics_output(text: str, n_topics: int) -> dict:
     """Parse the strict 3-line reply; each field validated independently.
 
     Returns {numbers: [...], difficulty: Easy|Medium|Hard|None,
-    suggestion: str|None, errors: [...]}. Invalid fields degrade to
-    empty/None with an error note -- nothing raises.
+    suggestion: str|None, errors: [...]}. An invalid primary topic
+    rejects the ranked list rather than promoting a supporting topic.
     """
     errors: list[str] = []
     numbers: list[int] = []
+    bad_primary = False
     m = TOPICS_RE.search(text or "")
     if m:
         raw = m.group(1).strip()
-        if raw.upper() != "NONE":
-            for tok in re.split(r"[,\s]+", raw):
-                if not tok:
-                    continue
+        if not raw or raw.startswith(","):
+            bad_primary = True
+            errors.append("missing main topic number")
+        elif raw.upper() != "NONE":
+            tokens = [tok for tok in re.split(r"[,\s]+", raw) if tok]
+            for rank, tok in enumerate(tokens):
                 try:
                     v = int(tok)
                 except ValueError:
                     errors.append(f"bad topic number {tok!r}")
+                    if rank == 0:
+                        bad_primary = True
+                        break
                     continue
                 if not 1 <= v <= n_topics:
                     errors.append(f"topic number {v} out of 1..{n_topics}")
+                    if rank == 0:
+                        bad_primary = True
+                        break
                     continue
-                if v not in numbers:
+                if v in numbers:
+                    errors.append(f"duplicate topic number {v}")
+                else:
                     numbers.append(v)
-            numbers = numbers[:3]
+            if len(numbers) > 3:
+                errors.append("more than three topics")
+                numbers = numbers[:3]
     else:
         errors.append("missing TOPICS line")
     difficulty = None
@@ -125,13 +142,17 @@ def parse_topics_output(text: str, n_topics: int) -> dict:
     else:
         errors.append("missing SUGGESTION line")
     if not numbers and suggestion is None:
-        errors.append("no topics and no suggestion: nothing to store")
+        errors.append("no topics and no suggestion")
+        suggestion = ("Needs review: the automatic classifier returned an invalid main topic."
+                      if bad_primary else
+                      "Needs review: the automatic classifier did not identify a topic.")
     return {"numbers": numbers, "difficulty": difficulty,
             "suggestion": suggestion, "errors": errors}
 
 
 def classify_question(paper_id: int, question_number: str,
-                      topic_lines: list[str] | None = None) -> dict:
+                      topic_reference: tuple[list[str], dict[int, str]] | None = None,
+                      *, replace_auto: bool = False) -> dict:
     """Run the classifier for one question; write auto rows; return report."""
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -142,9 +163,7 @@ def classify_question(paper_id: int, question_number: str,
         if (qdir / "solution.tex").is_file() else ""
     if not qtex.strip():
         return {"ok": False, "error": "question.tex missing/empty"}
-    if topic_lines is None:
-        topic_lines = [f"Topic {n} — {path}"
-                       for n, path in build_topic_list()]
+    topic_lines, topic_codes = topic_reference or build_topic_reference()
     system = (PROMPTS_DIR / "topic_prompt.md").read_text(encoding="utf-8")
     messages = [
         SystemMessage(content=system),
@@ -170,8 +189,8 @@ def classify_question(paper_id: int, question_number: str,
         reasoning_tokens=out_det.get("reasoning", 0),
     )
     qid = database.get_question_id(paper_id, question_number)
-    codes = [topic_codes_by_number()[v] for v in parsed["numbers"]]
-    if codes:
+    codes = [topic_codes[v] for v in parsed["numbers"]]
+    if (codes or replace_auto) and not parsed["errors"]:
         database.set_question_topics(qid, codes, src="auto")
     # Suggestion is write-only-when-spoken: auto never clears human text.
     # only_fill: a human difficulty grade is never overwritten.
@@ -182,6 +201,7 @@ def classify_question(paper_id: int, question_number: str,
     return {"ok": True, "numbers": parsed["numbers"], "codes": codes,
             "difficulty": parsed["difficulty"],
             "suggestion": parsed["suggestion"],
+            "raw_reply": text,
             "errors": parsed["errors"], "elapsed_sec": round(elapsed, 1)}
 
 
@@ -256,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Node 3: {len(todo)} question(s) to classify")
     if not todo:
         return 0
-    topic_lines = [f"Topic {n} — {path}" for n, path in build_topic_list()]
+    topic_reference = build_topic_reference()
     ok = errs = 0
     t0 = time.time()
     last_call = 0.0
@@ -265,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         if gap > 0:
             time.sleep(gap)
         try:
-            rep = classify_question(p, q, topic_lines)
+            rep = classify_question(p, q, topic_reference, replace_auto=refill)
         except Exception as exc:  # one bad question never stops the batch
             print(f"  [{p}/{q}] FAILED: {type(exc).__name__}: {exc}")
             errs += 1

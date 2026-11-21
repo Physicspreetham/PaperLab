@@ -215,6 +215,41 @@ def test_migrate_old_db_gets_status_and_token_table(tmp_path, monkeypatch):
     assert "token_usage" in tables
 
 
+def test_migrate_legacy_qtype_check_keeps_questions_and_topics(tmp_path):
+    path = tmp_path / "legacy-type.db"
+    conn = database.get_connection(path)
+    try:
+        conn.execute(database.SCHEMA_PAPERS)
+        conn.execute(database.SCHEMA_QUESTIONS.replace("'nni',", "").replace("'par-nni',", ""))
+        conn.execute(database.SCHEMA_TOPICS)
+        conn.execute(database.SCHEMA_QUESTION_TOPICS)
+        conn.execute("CREATE INDEX idx_questions_qtype ON questions(qtype)")
+        conn.execute("INSERT INTO papers (id) VALUES (2)")
+        conn.execute("INSERT INTO questions (id, paper_id, question_number, qtype) VALUES (7, 2, '1', 'int')")
+        conn.execute("INSERT INTO topics (code, level, name) VALUES ('P', 'module', 'Physics')")
+        conn.execute("INSERT INTO question_topics (question_id, topic_code) VALUES (7, 'P')")
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE questions SET qtype = 'nni' WHERE id = 7")
+    finally:
+        conn.close()
+
+    database.init_db(path)
+    database.init_db(path)
+    conn = database.get_connection(path)
+    try:
+        assert conn.execute("SELECT qtype FROM questions WHERE id = 7").fetchone()[0] == "int"
+        assert conn.execute("SELECT question_id FROM question_topics").fetchone()[0] == 7
+        assert not conn.execute("PRAGMA foreign_key_check").fetchall()
+        assert "idx_questions_qtype" in {r["name"] for r in conn.execute("PRAGMA index_list(questions)")}
+        conn.execute("UPDATE questions SET qtype = 'nni' WHERE id = 7")
+        conn.execute("INSERT INTO questions (paper_id, question_number, qtype) VALUES (2, '2-3_paragraph', 'par-nni')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE questions SET qtype = 'not-a-type' WHERE id = 7")
+    finally:
+        conn.close()
+
+
 def _seeded_q(tmp_db, tmp_path):
     """One paper + one question; returns its questions.id."""
     import database as _db
@@ -278,6 +313,7 @@ def test_question_topics_auto_never_clobbers_human(tmp_db, tmp_path):
     _, qid = _seeded_q(tmp_db, tmp_path)
     assert _db.set_question_topics(qid, ["PH24.08", "PH24.05"], src="auto") == 2
     assert _db.set_question_topics(qid, ["PH24.01"], src="human") == 1
+    assert _db.set_question_topics(qid, ["PH24.08"], src="auto") == 0
     conn = _db.get_connection()
     try:
         rows = conn.execute(

@@ -32,10 +32,13 @@ def test_parse_degrades_each_field():
 
 def test_parse_missing_lines():
     out = run_topics.parse_topics_output("hello", 296)
-    assert out == {"numbers": [], "difficulty": None, "suggestion": None,
-                   "errors": ["missing TOPICS line", "missing DIFFICULTY line",
-                              "missing SUGGESTION line",
-                              "no topics and no suggestion: nothing to store"]}
+    assert out == {
+        "numbers": [],
+        "difficulty": None,
+        "suggestion": "Needs review: the automatic classifier did not identify a topic.",
+        "errors": ["missing TOPICS line", "missing DIFFICULTY line",
+                   "missing SUGGESTION line", "no topics and no suggestion"],
+    }
 
 
 def test_topic_list_stable_and_numbered(tmp_db):

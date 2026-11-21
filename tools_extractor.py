@@ -1691,17 +1691,21 @@ def submit_question(paper_id: int, question_number: str, latex_content: str,
     image second, never from the transcribed tex alone:
     scq single-correct choice (A-D or i/ii/iii/iv, one correct, incl.
     Assertion-Reason/statement-sets); msq multi-correct (one or more);
-    int integer 0-9 entry; num decimal/numeric entry; mtx match-table
-    (List-I/II or Columns + combo options); par-scq/par-msq/par-int/
-    par-num/par-mtx passage group with uniform subs; par-mix mixed subs;
+    nni whole-number response whose format rules out negatives;
+    int other whole-number entry (signed or no stated sign restriction);
+    num other numerical entry (including decimal or general numeric).
+    Digit count alone is not a type; classify the format, not the key value.
+    mtx match-table (List-I/II or Columns + combo options);
+    par-scq/par-msq/par-int/par-nni/par-num/par-mtx passage group with
+    uniform subs; par-mix mixed subs (including int mixed with nni);
     unknown when illegible or no rule fires.
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING ("1", "15a", "15-17_paragraph").
         latex_content: LaTeX source for the question.
-        qtype: One of scq, msq, int, num, mtx, par-scq, par-msq,
-            par-int, par-num, par-mtx, par-mix, unknown. Defaults to
+        qtype: One of scq, msq, int, nni, num, mtx, par-scq, par-msq,
+            par-int, par-nni, par-num, par-mtx, par-mix, unknown. Defaults to
             unknown -- pass explicitly whenever the section header or
             image makes it clear.
 

@@ -17,13 +17,10 @@
  * never merged into its base type. Passage blocks stay atomic — never
  * split — but group strictly by their own type code.
  */
-
+import { SECTION_TYPES } from './qtypes.js';
+export { SECTION_TYPES };
 
 export const BUILDER_SCHEMA_VERSION = 1;
-/** Raw question types; paper sections follow this order. par-* codes
- * are distinct sections, never merged into their base type. */
-export const SECTION_TYPES = ['scq', 'msq', 'int', 'num', 'mtx',
-  'par-scq', 'par-msq', 'par-int', 'par-num', 'par-mtx', 'par-mix', 'unknown'];
 
 export function newBlockId() {
 	try {

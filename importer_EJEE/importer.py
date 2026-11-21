@@ -691,10 +691,10 @@ def reuse_reviewed(cfg, item, pid, number):
 def classify(cfg, run):
     # Execute upstream Node 3 unchanged. No EJEE difficulty/tags enter this stage.
     import database
-    from run_topics import build_topic_list, classify_question
+    from run_topics import build_topic_reference, classify_question
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
-    lines = [f'Topic {n} — {p}' for n, p in build_topic_list()]
+    topic_reference = build_topic_reference()
     meta = node3_inputs_hash()
     if progress.get('node3_meta') not in (None, meta):
         # Seed, prompt or upstream moved under a cached classification:
@@ -713,7 +713,7 @@ def classify(cfg, run):
             previous['ok'] = True
             dump(run / 'progress.json', progress)
             continue
-        report = classify_question(manifest['paper_id'], number, lines)
+        report = classify_question(manifest['paper_id'], number, topic_reference)
         report['ok'] = bool(report.get('ok') and valid_classification(report))
         progress['node3'][number] = report
         dump(run / 'progress.json', progress)

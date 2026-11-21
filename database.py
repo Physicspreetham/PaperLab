@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import sqlite3
 from pathlib import Path
 
@@ -116,12 +117,13 @@ CREATE TABLE IF NOT EXISTS token_usage (
 """
 
 # Allowed per-question format types (Node 2, section-first).
-# Base: scq single-correct, msq multi-correct, int integer 0-9,
-# num decimal/numeric, mtx match-table. par-* = passage group with
+# Base: scq single-correct, msq multi-correct, int general integer,
+# nni explicitly non-negative integer,
+# num general numerical entry, mtx match-table. par-* = passage group with
 # uniform sub-format, par-mix = mixed subs, unknown = explicit fallback.
 QTYPE_VALUES = (
-    "scq", "msq", "int", "num", "mtx",
-    "par-scq", "par-msq", "par-int", "par-num", "par-mtx", "par-mix",
+    "scq", "msq", "int", "nni", "num", "mtx",
+    "par-scq", "par-msq", "par-int", "par-nni", "par-num", "par-mtx", "par-mix",
     "unknown",
 )
 
@@ -129,15 +131,20 @@ DIFFICULTY_VALUES = ("Easy", "Medium", "Hard")
 
 TOPIC_SEED_FILE = Path(__file__).parent / "topics_seed.json"
 
-SCHEMA_QUESTIONS = """
+_QTYPE_COLUMN = (
+    "qtype TEXT NOT NULL DEFAULT 'unknown' CHECK (qtype IN ("
+    + ",".join(f"'{value}'" for value in QTYPE_VALUES)
+    + "))"
+)
+
+SCHEMA_QUESTIONS = f"""
 CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     paper_id INTEGER NOT NULL,
     question_number TEXT NOT NULL,
     latex_folder TEXT,
     status TEXT DEFAULT 'draft',
-    qtype TEXT NOT NULL DEFAULT 'unknown'
-        CHECK (qtype IN ('scq','msq','int','num','mtx','par-scq','par-msq','par-int','par-num','par-mtx','par-mix','unknown')),
+    {_QTYPE_COLUMN},
     FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE,
     UNIQUE (paper_id, question_number)
 );
@@ -199,6 +206,31 @@ def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_question_type_check(conn: sqlite3.Connection) -> None:
+    """Widen the old inline CHECK without rebuilding question IDs or links."""
+    def needs_migration() -> bool:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='questions'"
+        ).fetchone()
+        check = re.search(r"\bCHECK\s*\(\s*qtype\s+IN\s*\(([^)]*)\)",
+                          row["sql"], re.IGNORECASE) if row else None
+        # Some older DBs already have an unconstrained qtype column.
+        return bool(check and not set(QTYPE_VALUES) <= set(re.findall(r"'([^']+)'", check[1])))
+
+    if not needs_migration():
+        return
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if not needs_migration():  # Another process may have migrated while we waited.
+            return
+        conn.execute("DROP INDEX IF EXISTS idx_questions_qtype")
+        conn.execute("ALTER TABLE questions RENAME COLUMN qtype TO qtype_legacy")
+        conn.execute(f"ALTER TABLE questions ADD COLUMN {_QTYPE_COLUMN}")
+        conn.execute("UPDATE questions SET qtype = qtype_legacy")
+        conn.execute("ALTER TABLE questions DROP COLUMN qtype_legacy")
+        conn.execute("CREATE INDEX idx_questions_qtype ON questions(qtype)")
+
+
 def init_db(db_path: str | Path | None = None) -> Path:
     """Create tables if missing; migrate old DBs (status/error/token_usage).
 
@@ -210,6 +242,7 @@ def init_db(db_path: str | Path | None = None) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection(path)
     try:
+        _migrate_question_type_check(conn)
         conn.execute(SCHEMA_PAPERS)
         conn.execute(SCHEMA_QUESTIONS)
         conn.execute(SCHEMA_TOKEN_USAGE)
@@ -217,9 +250,7 @@ def init_db(db_path: str | Path | None = None) -> Path:
         conn.execute(SCHEMA_QUESTION_TOPICS)
         qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)")}
         if "qtype" not in qcols:
-            conn.execute(
-                "ALTER TABLE questions ADD COLUMN qtype TEXT NOT NULL DEFAULT 'unknown'"
-            )
+            conn.execute(f"ALTER TABLE questions ADD COLUMN {_QTYPE_COLUMN}")
             qcols.add("qtype")
         tcols = {r["name"] for r in conn.execute("PRAGMA table_info(topics)")}
         if "rev" not in tcols:
@@ -442,7 +473,7 @@ def set_question_topics(
 
     Refs may be codes, slugs, names, or full paths (resolved via
     resolve_topic); raw codes are never required from callers.
-    src='auto' replaces only auto rows (human picks are never touched);
+    src='auto' replaces only auto rows, and skips human-tagged questions;
     src='human' replaces everything. Bad refs raise ValueError.
     Returns the number of links written.
     """
@@ -452,11 +483,19 @@ def set_question_topics(
     init_db()
     conn = get_connection()
     try:
+        if src == "auto":
+            # A scholar may finish a review while an automatic LLM call is in flight.
+            conn.execute("BEGIN IMMEDIATE")
         if conn.execute(
             "SELECT id FROM questions WHERE id = ?", (question_id,)
         ).fetchone() is None:
             raise ValueError(f"question id {question_id} does not exist")
         if src == "auto":
+            if conn.execute(
+                "SELECT 1 FROM question_topics WHERE question_id = ? AND src = 'human'",
+                (question_id,),
+            ).fetchone():
+                return 0
             conn.execute(
                 "DELETE FROM question_topics WHERE question_id = ? AND src = 'auto'",
                 (question_id,),
@@ -499,7 +538,7 @@ def set_question_difficulty(
     try:
         if only_fill:
             cur_row = conn.execute(
-                "SELECT difficulty FROM questions"
+                "SELECT difficulty, topic_suggestion FROM questions"
                 " WHERE paper_id = ? AND question_number = ?",
                 (paper_id, str(question_number)),
             ).fetchone()
@@ -509,6 +548,8 @@ def set_question_difficulty(
                 )
             if cur_row["difficulty"] is not None:
                 difficulty = cur_row["difficulty"]  # human grade wins
+            if cur_row["topic_suggestion"] is not None:
+                topic_suggestion = None  # Preserve an existing review note.
             if difficulty is None and topic_suggestion is None:
                 return True  # parse produced nothing storable
         if topic_suggestion is None:

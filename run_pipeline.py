@@ -204,20 +204,19 @@ def run_pipeline(paper_id: int, force: bool = False,
                 # Fail-open by design -- a topics error never fails the paper;
                 # legacy papers are tagged separately via run_topics.py.
                 try:
-                    from run_topics import (PACE_SEC, build_topic_list,
+                    from run_topics import (PACE_SEC, build_topic_reference,
                                             classify_question, targets)
 
                     todo = targets(paper_id)
                     if todo:
-                        lines = [f"Topic {n} — {p}"
-                                 for n, p in build_topic_list()]
+                        topic_reference = build_topic_reference()
                         last_call = 0.0
                         for p, q in todo:
                             gap = PACE_SEC - (time.time() - last_call)
                             if gap > 0:
                                 time.sleep(gap)
                             try:
-                                classify_question(p, q, lines)
+                                classify_question(p, q, topic_reference)
                             except Exception as exc:
                                 print(f"topics: [{p}/{q}] skipped: "
                                       f"{type(exc).__name__}: {exc}")
