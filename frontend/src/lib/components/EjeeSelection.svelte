@@ -2,7 +2,8 @@
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { pushState } from '$app/navigation';
-	import { createViewerFullscreen } from '$lib/ejeeGallery.js';
+	import { createViewerFullscreen, createWheelPager, sortByImportOrder } from '$lib/ejeeGallery.js';
+	import EjeeHoverPreview from './EjeeHoverPreview.svelte';
 	import { api } from '$lib/api.js';
 	import EjeeImageViewer from './EjeeImageViewer.svelte';
 	import EjeeImportCartButton from './EjeeImportCartButton.svelte';
@@ -41,10 +42,62 @@
 		closeRequested=false;
 	}
 	$effect(()=>{const viewerState=$page.state.ejeeViewer;if(historyOwned && !viewerState) finishClose();});
+	// Hover preview: a large non-modal panel beside the grid; wheel/arrow keys slide through questions.
+	let hoverId = $state(null), hoverSide = $state('right');
+	let hoverTimer, leaveTimer, suppressUntil = 0;
+	const hoverPager = createWheelPager();
+	const hoverIndex = $derived(rows.findIndex(r => r.id === hoverId));
+	const hoverRow = $derived(openPreview || hoverIndex < 0 ? null : rows[hoverIndex]);
+	function hoverEnter(row,node) {
+		if (!row.ready || openPreview || performance.now() < suppressUntil) return;
+		clearTimeout(leaveTimer); clearTimeout(hoverTimer);
+		const show = () => {
+			if (hoverId === null) { const r = node.getBoundingClientRect(); hoverSide = r.left + r.width/2 < window.innerWidth/2 ? 'right' : 'left'; }
+			hoverId = row.id;
+		};
+		if (hoverId !== null) show(); else hoverTimer = setTimeout(show,150);
+	}
+	function hoverKeep() { clearTimeout(leaveTimer); }
+	function hoverLeave() { clearTimeout(hoverTimer); clearTimeout(leaveTimer); leaveTimer = setTimeout(() => hoverId = null,250); }
+	function hoverClose() { clearTimeout(hoverTimer); clearTimeout(leaveTimer); hoverId = null; }
+	async function hoverMove(step) {
+		let next = hoverIndex + step;
+		if (next >= rows.length && rows.length < total) { await loadMore(); next = hoverIndex + step; }
+		if (next < 0 || next >= rows.length) return;
+		if (rows.length - next < 6) loadMore();
+		hoverId = rows[next].id;
+		suppressUntil = performance.now() + 400; // page scroll below must not re-trigger hover on another card
+		const rect = thumbnails.get(hoverId)?.getBoundingClientRect();
+		if (rect && (rect.top < 0 || rect.bottom > window.innerHeight)) thumbnails.get(hoverId).scrollIntoView({block:'center',behavior:'instant'});
+	}
+	function hoverWheel(event) {
+		if (event.ctrlKey || event.metaKey) return;
+		event.preventDefault();
+		const step = hoverPager(event,performance.now());
+		if (step) hoverMove(step);
+	}
+	function hoverFullscreen() { const id = hoverId; hoverClose(); if (id) openImage(id); }
+	function thumbWheel(node) {
+		const handler = event => { if (hoverId !== null && !openPreview) hoverWheel(event); };
+		node.addEventListener('wheel',handler,{passive:false});
+		return {destroy(){node.removeEventListener('wheel',handler);}};
+	}
+	function hoverKeydown(event) {
+		if (hoverId === null || openPreview || event.ctrlKey || event.metaKey || event.altKey) return;
+		if (['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName)) return;
+		const row = hoverRow;
+		if (event.key === 'ArrowRight') { event.preventDefault(); hoverMove(1); }
+		else if (event.key === 'ArrowLeft') { event.preventDefault(); hoverMove(-1); }
+		else if (event.key === 'Escape') { hoverClose(); }
+		else if ((event.key === 'f' || event.key === 'F') && row) { event.preventDefault(); hoverFullscreen(); }
+		else if ((event.key === 'c' || event.key === 'C') && row && !cannotSelect(row)) { event.preventDefault(); toggle(row,!chosen[row.selection_key]); }
+	}
+	$effect(() => { if (openPreview) hoverClose(); });
 	const PAGE = 30;
 	let reclassify = $state(false);
 	let contentMode = $state('full');
 	const count = $derived(Object.keys(chosen).length);
+	const chosenOrdered = $derived(sortByImportOrder(Object.values(chosen),facets?.nodes || []));
 	const previewRow = $derived(rows.find(r => r.id === openPreview));
 	const previewIndex = $derived(rows.findIndex(r => r.id === openPreview));
 	const nodes = $derived(facets?.nodes || []);
@@ -89,9 +142,31 @@
 	async function movePreview(step) {
 		if (loading) return;
 		const next = previewIndex + step;
+		if (next >= rows.length && rows.length < total) await loadMore();
 		if (next >= 0 && next < rows.length) openPreview = rows[next].id;
-		else if (step > 0 && offset+PAGE < total) await search(offset+PAGE,false,'first');
-		else if (step < 0 && offset > 0) await search(Math.max(0,offset-PAGE),false,'last');
+		else return;
+		if (rows.length - next < 6) loadMore();
+	}
+	// Continuous scrolling: append the next batch instead of replacing the page.
+	let loadingMore = $state(false), sentinel = null;
+	async function loadMore() {
+		if (loading || loadingMore || !facets || rows.length >= total) return;
+		loadingMore = true; const version = requestVersion;
+		try {
+			const data = await api.searchEjeeQuestions({filters:appliedFilters,node_ids:appliedFilters.node_ids,offset:rows.length,limit:PAGE});
+			if (version !== requestVersion) return;
+			if (data.source_token !== facets.source_token) throw new Error('The EJEE source changed. Reload this page before selecting more questions.');
+			const seen = new Set(rows.map(r => r.id));
+			rows = [...rows, ...data.items.filter(r => !seen.has(r.id))]; total = data.total;
+		} catch(e) { if (version === requestVersion) error = e.message; }
+		finally { loadingMore = false; requestAnimationFrame(checkSentinel); }
+	}
+	function checkSentinel() { if (sentinel && sentinel.getBoundingClientRect().top < window.innerHeight + 700) loadMore(); }
+	function sentinelAction(node) {
+		sentinel = node;
+		const io = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); }, {rootMargin:'700px'});
+		io.observe(node);
+		return {destroy(){io.disconnect(); sentinel = null;}};
 	}
 	function cannotSelect(row) { return !row.ready || busy || (count >= facets.max_selection && !chosen[row.selection_key]); }
 	function toggle(row,checked) {
@@ -147,6 +222,7 @@
 	}
 	onMount(() => {
 		let active = true;
+		window.addEventListener('keydown',hoverKeydown);
 		fullscreen=createViewerFullscreen(document);
 		const exited=()=>{if(openPreview && fullscreen.owns() && !document.fullscreenElement)requestClose();};
 		document.addEventListener('fullscreenchange',exited);
@@ -160,7 +236,7 @@
 				await search(0,true);
 			} catch(e) { if(active) {error = e.message; loading = false;} }
 		})();
-		return () => { active = false; requestVersion++; viewerGeneration++; document.removeEventListener('fullscreenchange',exited); fullscreen.leave(); };
+		return () => { active = false; requestVersion++; viewerGeneration++; document.removeEventListener('fullscreenchange',exited); window.removeEventListener('keydown',hoverKeydown); clearTimeout(hoverTimer); clearTimeout(leaveTimer); fullscreen.leave(); };
 	});
 </script>
 
@@ -210,14 +286,14 @@
 	{#if loading}<p role="status">Reading EJEE questions…</p>{/if}
 	{#if facets}
 		<div class="selection-bar"><strong>Import cart · {count} questions selected</strong><button class="pl-btn" disabled={!rows.length || loading} onclick={selectPage}>Select eligible questions on this page</button><button class="pl-btn" disabled={!rows.length || loading || busy || total <= rows.length} onclick={selectAllMatching}>Select all {Math.min(total, facets.max_selection).toLocaleString()} matching</button><button class="pl-btn" disabled={!count} onclick={() => chosen={}}>Clear selection</button></div>
-		<p class="muted">Click a thumbnail for the large viewer; scroll over its image to slide questions. Cart icons add to the import selection.</p>
-		<p class="muted">{total.toLocaleString()} matching question cards · {rows.length ? offset+1 : 0}–{Math.min(offset+PAGE,total)} shown. Selections stay when you change filters or pages; linked continuation cards count as one question.</p>
+		<p class="muted">Hover a thumbnail for a large preview; scroll the mouse wheel or use ← → to slide questions (C adds to cart, F opens fullscreen). Click a thumbnail for the full viewer.</p>
+		<p class="muted">{total.toLocaleString()} matching question cards · {rows.length.toLocaleString()} loaded — more load automatically as you scroll. Selections stay when you change filters or pages; linked continuation cards count as one question.</p>
 		<div class="results" aria-busy={loading}>
 			{#each rows as row (row.id)}
-				<article class:chosen={!!chosen[row.selection_key]} class:last-viewed={lastViewed===row.id} use:thumbnailAnchor={row.id}>
+				<article class:chosen={!!chosen[row.selection_key]} class:last-viewed={lastViewed===row.id} class:hovered={hoverId===row.id} use:thumbnailAnchor={row.id}>
 					<div class="card-actions"><label class="question-choice"><input type="checkbox" aria-label={`Select ${row.title}`} checked={!!chosen[row.selection_key]} disabled={cannotSelect(row)} onchange={e => toggle(row,e.currentTarget.checked)} /><strong>{row.title}</strong></label>
 						<EjeeImportCartButton selected={!!chosen[row.selection_key]} disabled={cannotSelect(row)} title={row.title} onToggle={() => toggle(row,!chosen[row.selection_key])} /></div>
-					<button class="thumbnail" type="button" disabled={!row.ready} aria-label={`Open full image for ${row.title}`} onclick={() => openImage(row.id)}>
+					<button class="thumbnail" type="button" disabled={!row.ready} aria-label={`Open full image for ${row.title}`} use:thumbWheel onmouseenter={e => hoverEnter(row,e.currentTarget)} onmouseleave={hoverLeave} onclick={() => openImage(row.id)}>
 						{#if row.ready}<img src={`/api/ejee/questions/${row.id}/preview?size=thumbnail&source_token=${encodeURIComponent(facets.source_token)}`} alt={`Thumbnail of ${row.title}`} loading="lazy" decoding="async" />{:else}<span>Image unavailable</span>{/if}
 					</button>
 					{#if lastViewed===row.id}<span class="last-viewed-label">Last viewed</span>{/if}
@@ -229,9 +305,9 @@
 			{/each}
 			{#if !loading && !rows.length}<p>No questions match these filters.</p>{/if}
 		</div>
-		<div class="actions"><button class="pl-btn" disabled={loading || offset===0} onclick={() => search(Math.max(0,offset-PAGE))}>← Previous page</button><button class="pl-btn" disabled={loading || offset+PAGE>=total} onclick={() => search(offset+PAGE)}>Next page →</button></div>
+		<div use:sentinelAction class="more" aria-live="polite">{#if loadingMore}Loading more questions…{:else if rows.length && rows.length >= total}All {total.toLocaleString()} questions loaded.{/if}</div>
 		{#if count}
-			<details class="basket"><summary>Review import cart ({count})</summary>{#each Object.values(chosen) as row (row.selection_key)}<div class="basket-row"><span>{row.title} — {row.source}</span><button class="pl-btn" onclick={() => toggle(row,false)}>Remove</button></div>{/each}</details>
+			<details class="basket"><summary>Review import cart ({count})</summary>{#each chosenOrdered as row (row.selection_key)}<div class="basket-row"><span>{row.title} — {row.source}</span><button class="pl-btn" onclick={() => toggle(row,false)}>Remove</button></div>{/each}</details>
 		{/if}
 		<div class="collection">
 			{#if !appendPaperId}<label>Collection name<input class="pl-input" bind:value={name} maxlength="180" placeholder="e.g. Electrostatics - selected numerical questions" /></label>{/if}
@@ -252,8 +328,15 @@
 	{/if}
 </section>
 
+{#if hoverRow && facets}
+	<EjeeHoverPreview row={hoverRow} index={offset+hoverIndex} {total} sourceToken={facets.source_token}
+		selected={!!chosen[hoverRow.selection_key]} disabled={cannotSelect(hoverRow)} neighbours={[rows[hoverIndex+1],rows[hoverIndex-1]]}
+		onToggle={checked => toggle(hoverRow,checked)} onFullscreen={hoverFullscreen} onClose={hoverClose}
+		onWheel={hoverWheel} onEnter={hoverKeep} onLeave={hoverLeave} />
+{/if}
+
 {#if previewRow}
-	<EjeeImageViewer row={previewRow} index={offset+previewIndex} {total} sourceToken={facets.source_token} selected={!!chosen[previewRow.selection_key]} disabled={cannotSelect(previewRow)} navigating={loading} onToggle={checked => toggle(previewRow,checked)} onClose={requestClose} onMove={movePreview} onFullscreen={() => fullscreen?.enter()} />
+	<EjeeImageViewer row={previewRow} index={offset+previewIndex} {total} sourceToken={facets.source_token} selected={!!chosen[previewRow.selection_key]} disabled={cannotSelect(previewRow)} navigating={loading || loadingMore} onToggle={checked => toggle(previewRow,checked)} onClose={requestClose} onMove={movePreview} onFullscreen={() => fullscreen?.enter()} />
 {/if}
 
 <style>
@@ -285,6 +368,8 @@
 	article { border:1px solid var(--pl-line); border-radius:10px; padding:16px; }
 	article.last-viewed { outline:3px solid var(--pl-accent, var(--pl-seal)); outline-offset:3px; box-shadow:0 0 0 6px var(--pl-seal-soft); scroll-margin:80px 0; }
 	.last-viewed-label { display:inline-block; margin-top:10px; padding:3px 8px; border-radius:5px; font-size:.75rem; font-weight:700; color:var(--pl-seal); background:var(--pl-seal-soft); }
+	.more { min-height:40px; text-align:center; opacity:.7; padding:14px 0; }
+	article.hovered { outline:2px solid var(--pl-seal); outline-offset:2px; }
 	article.chosen { border-color:var(--pl-accent); background:var(--pl-surface); }
 	.question-choice { display:flex; align-items:flex-start; gap:12px; cursor:pointer; }
 	.question-choice input { margin-top:5px; }

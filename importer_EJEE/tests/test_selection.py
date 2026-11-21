@@ -37,6 +37,24 @@ def test_filters_use_real_node_descendants_and_model_not_adapter(source):
     assert 'Numerical' in [v['value'] for v in selection.facets()['qtype']]
 
 
+def test_source_filter_accepts_216_selected_values(source):
+    names = ['Unmapped source', *(f'Other source {i}' for i in range(215))]
+    result = selection.search({'source':names, 'qtype':'Numerical'})
+    assert [row['id'] for row in result['items']] == [67760]
+
+
+def test_multiple_subtopics_match_the_union_without_duplicates(source):
+    with sqlite3.connect(source) as c:
+        first, second = [row[0] for row in c.execute(
+            'SELECT DISTINCT topic_id FROM resources WHERE topic_id IS NOT NULL ORDER BY topic_id LIMIT 2')]
+    def ids(filters):
+        return {row['id'] for row in selection.search(filters, limit=100)['items']}
+
+    expected = ids({'node_id':first}) | ids({'node_id':second})
+    assert expected
+    assert ids({'node_ids':[first, second, first]}) == expected
+
+
 def test_snapshot_keeps_only_exact_selected_group_with_own_solutions(source):
     before=source.read_bytes()
     frozen=selection.snapshot([67760,67760])
@@ -46,6 +64,26 @@ def test_snapshot_keeps_only_exact_selected_group_with_own_solutions(source):
     assert frozen['items'][0]['question_rows'][0]['source']=='Unmapped source'
     assert source.read_bytes()==before
     assert selection.preview(67760).startswith(b'\x89PNG')
+
+
+def test_append_selection_only_queues_new_questions(source, tmp_path, monkeypatch):
+    monkeypatch.setattr(service, 'ROOT', tmp_path)
+    monkeypatch.setattr(service, 'launch', lambda *_: None)
+    target = tmp_path / 'target.db'
+    with sqlite3.connect(target) as c:
+        c.execute('CREATE TABLE papers (id INTEGER PRIMARY KEY, paper_name TEXT, status TEXT, exam_type TEXT)')
+        c.execute("INSERT INTO papers VALUES (1,'Optics','done','EJEE collection')")
+    archive = tmp_path / 'data' / 'archive' / 'ejee' / '1'
+    service.write_json(archive / 'import-manifest.json', selection.snapshot([67760]))
+    params = (selection.source_token(), {}, target, tmp_path / 'Outputs', tmp_path / 'data', {})
+
+    duplicate = service.start_selection('', [67760], *params, append_paper_id=1)
+    assert duplicate['already_imported'] and duplicate['skipped'] == 1
+    job = service.start_selection('', [67760, 67763], *params, append_paper_id=1)
+    assert job['chapter'] == 'Optics' and job['total'] == job['skipped'] == 1
+    assert job['selected_resource_ids'] == [67763]
+    snapshot = service.read_json(service.WEB / job['id'] / 'selection.json')
+    assert [item['source_number'] for item in snapshot['items']] == [selection.snapshot([67763])['items'][0]['source_number']]
 
 
 def test_gallery_metadata_and_full_size_image_remain_read_only_and_source_scoped(source):
@@ -99,3 +137,16 @@ def test_invalid_selection_and_unsafe_assets_rejected_before_ai(source):
     with sqlite3.connect(source) as c:c.execute("UPDATE resources SET file_name='../outside.png' WHERE id=67760")
     assert not selection.search({'source':'Unmapped source'})['items'][0]['ready']
     with pytest.raises(ValueError,match='unavailable'):selection.snapshot([67760])
+
+
+def test_results_and_snapshot_follow_source_then_syllabus_order(source):
+    with sqlite3.connect(source) as c:
+        c.row_factory=sqlite3.Row
+        nodes={r['id']:dict(r) for r in c.execute('SELECT id,parent_id,position FROM nodes')}
+        rows=[dict(r) for r in c.execute('SELECT id,source,topic_id,title,position FROM resources')]
+    expected=[r['id'] for r in sorted([r for r in rows if r['id'] in {i['id'] for i in selection.search({},0,100)['items']}],key=lambda r:selection.order_key(r,nodes))]
+    got=[i['id'] for i in selection.search({},0,100)['items']]
+    assert got==expected
+    ids=list(reversed(got[:5]))
+    snap=selection.snapshot(ids)
+    assert [item['question_rows'][0]['id'] for item in snap['items']]==[i for i in got if i in set(ids)]

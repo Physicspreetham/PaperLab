@@ -20,25 +20,37 @@ def selection_key(row):
     return hashlib.sha256(json.dumps([row['source'],row['grp'] or f'resource:{row["id"]}']).encode()).hexdigest()
 
 
-def values(value):
+def values(value, *, limit=200):
     if value in (None,'',[]):return []
     result=value if isinstance(value,list) else [value]
-    if len(result)>200 or any(not isinstance(v,str) or len(v)>1000 for v in result):raise ValueError('Invalid filter values')
+    if (limit is not None and len(result)>limit) or any(not isinstance(v,str) or len(v)>1000 for v in result):
+        raise ValueError('Invalid filter values')
     return result
 
 
 def where(filters):
     clauses=[ELIGIBLE];params=[];prefix=''
-    node=filters.get('node_id')
-    if node:
-        prefix='WITH RECURSIVE chosen(id) AS (SELECT id FROM nodes WHERE id=? UNION SELECT n.id FROM nodes n JOIN chosen p ON n.parent_id=p.id) '
-        params.append(int(node));clauses.append('r.topic_id IN (SELECT id FROM chosen)')
+    node_ids = filters.get('node_ids', [])
+    if not isinstance(node_ids, list) or any(type(node) is not int or node <= 0 for node in node_ids):
+        raise ValueError('Invalid subtopic selection')
+    if not node_ids and filters.get('node_id'):
+        node_ids = [int(filters['node_id'])]
+    if node_ids:
+        prefix = ('WITH RECURSIVE chosen(id) AS ('
+                  'SELECT id FROM nodes WHERE id IN (SELECT value FROM json_each(?)) '
+                  'UNION SELECT n.id FROM nodes n JOIN chosen p ON n.parent_id=p.id) ')
+        params.append(json.dumps(list(dict.fromkeys(node_ids))))
+        clauses.append('r.topic_id IN (SELECT id FROM chosen)')
     for field in ('source','qtype','type','difficulty','exam','year','status'):
-        selected=values(filters.get(field))
+        selected=values(filters.get(field), limit=None if field=='source' else 200)
         if not selected:continue
         known=[v for v in selected if v!='__none__'];parts=[]
         if known:
-            parts.append(f'CAST(r.{field} AS TEXT) IN ('+','.join('?' for _ in known)+')');params.extend(known)
+            if field=='source':
+                parts.append('CAST(r.source AS TEXT) IN (SELECT value FROM json_each(?))')
+                params.append(json.dumps(list(dict.fromkeys(known))))
+            else:
+                parts.append(f'CAST(r.{field} AS TEXT) IN ('+','.join('?' for _ in known)+')');params.extend(known)
         if '__none__' in selected:parts.append(f"(r.{field} IS NULL OR CAST(r.{field} AS TEXT)='')")
         clauses.append('('+' OR '.join(parts)+')')
     text=str(filters.get('q') or '').strip()
@@ -86,14 +98,48 @@ def image_issue(row,asset_root):
     return None
 
 
+_ORDER_CACHE={}
+
+
+def _natural(text):
+    import re
+    return [int(p) if p.isdigit() else p.casefold() for p in re.split(r'(\d+)',text or '')]
+
+
+def order_key(row,nodes):
+    """Syllabus order first (module, chapter, week, topic/subtopic positions); within a subtopic group by source, then card title."""
+    cache=nodes.setdefault('__memo__',{})  # per-call memo of topic_id -> syllabus tuple
+    topic=row['topic_id']
+    if topic not in cache:
+        path=[];node=topic;seen=set()
+        while node in nodes and node not in seen:
+            seen.add(node);path.append(nodes[node]);node=nodes[node]['parent_id']
+        path.reverse()
+        cache[topic]=tuple((n['position'] if n['position'] is not None else 1<<30,n['id']) for n in path)
+    syllabus=cache[topic]
+    source=row['source']
+    return ((0,syllabus) if syllabus else (1,()),
+            (1,'') if source in (None,'') else (0,str(source).casefold()),
+            _natural(row['title']),row['position'] if row['position'] is not None else 0,row['id'])
+
+
 def search(filters,offset=0,limit=30):
     if offset<0 or not 1<=limit<=100:raise ValueError('Invalid question page')
     cfg=service.settings();c=service.source_connection(cfg['source_db'])
     try:
         prefix,condition,args=where(filters)
         total=c.execute(prefix+'SELECT count(*) FROM resources r WHERE '+condition,args).fetchone()[0]
-        rows=c.execute(prefix+'SELECT r.id,r.source,r.grp,r.title,r.topic_id,r.qtype,r.type,r.difficulty,r.exam,r.year,r.status,r.fav,r.file_name,r.print_meta,r.answer,substr(r.question,1,350) question FROM resources r WHERE '+condition+' ORDER BY r.id LIMIT ? OFFSET ?',[*args,limit,offset]).fetchall()
-        nodes={r['id']:dict(r) for r in c.execute('SELECT id,parent_id,name FROM nodes')}
+        nodes={r['id']:dict(r) for r in c.execute('SELECT id,parent_id,name,position FROM nodes')}
+        cache_key=(str(cfg['source_db']),prefix+condition,json.dumps(args),Path(cfg['source_db']).stat().st_mtime_ns)
+        ordered=_ORDER_CACHE.get(cache_key)
+        if ordered is None:
+            ordering=c.execute(prefix+'SELECT r.id,r.source,r.topic_id,r.title,r.position FROM resources r WHERE '+condition,args).fetchall()
+            ordered=[r['id'] for r in sorted(ordering,key=lambda r:order_key(r,nodes))]
+            if len(_ORDER_CACHE)>=6:_ORDER_CACHE.pop(next(iter(_ORDER_CACHE)))
+            _ORDER_CACHE[cache_key]=ordered
+        page=ordered[offset:offset+limit]
+        fetched={r['id']:r for r in c.execute('SELECT r.id,r.source,r.grp,r.title,r.topic_id,r.qtype,r.type,r.difficulty,r.exam,r.year,r.status,r.fav,r.file_name,r.print_meta,r.answer,substr(r.question,1,350) question FROM resources r WHERE r.id IN ('+','.join('?' for _ in page)+')',page)} if page else {}
+        rows=[fetched[i] for i in page if i in fetched]
         groups=list({r['grp'] for r in rows if r['grp']})
         solutions={}
         if groups:
@@ -131,6 +177,8 @@ def snapshot(resource_ids):
                 row=dict(row)
                 if (row['source'],row['grp']) in selected_groups:grouped[(row['source'],row['grp'])].append(row)
         nodes={r['id']:dict(r) for r in c.execute('SELECT * FROM nodes')}
+        # Import in syllabus order (source, chapter, week, subtopic), never in checkbox-click order.
+        ids=sorted(ids,key=lambda rid:order_key(anchors[rid],nodes))
         items=[];seen=set();all_ids=[]
         for rid in ids:
             anchor=anchors[rid];key=selection_key(anchor)
