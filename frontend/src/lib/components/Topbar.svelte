@@ -9,6 +9,7 @@
 	const isArchivist = $derived($role === 'archivist');
 	const onArchive = $derived($page.url.pathname.startsWith('/archive'));
 	const onSearch = $derived($page.url.pathname === '/search');
+	const onCart = $derived($page.url.pathname === '/cart');
 
 	function onKeydown(event) {
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -50,6 +51,14 @@
 	</nav>
 
 	<div class="actions">
+		{#if onCart}
+			<a class="role-pill model-link" href="/cart/model-papers">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z M14 3v5h5 M9 12h6m-6 4h6" />
+				</svg>
+				Model papers
+			</a>
+		{/if}
 		<button type="button" class="role-pill" onclick={toggleRole} title="Switch role">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
 				<path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
@@ -149,6 +158,15 @@
 	.role-pill svg {
 		width: 16px;
 		height: 16px;
+		flex-shrink: 0;
+	}
+	.model-link {
+		color: var(--pl-ink);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.model-link:hover {
+		background: var(--pl-raised);
 	}
 	.search {
 		display: flex;
@@ -225,5 +243,20 @@
 		.search input {
 			width: 80px;
 		}
+	}
+	@media (max-width: 420px) {
+		.topbar:has(.model-link) {
+			padding-inline: 8px;
+			gap: 4px;
+		}
+		.topbar:has(.model-link) .role-pill {
+			padding-inline: 8px;
+		}
+		.topbar:has(.model-link) .actions {
+			gap: 4px;
+		}
+	}
+	@media (max-width: 360px) {
+		.model-link svg { display: none; }
 	}
 </style>

@@ -7,7 +7,7 @@
 	import QuestionReader from '$lib/components/QuestionReader.svelte';
 
 	let { lockSide = false } = $props();
-	import { qtypeLabel } from '$lib/qtypes.js';
+	import { qtypeLabel, qtypeOptionLabel } from '$lib/qtypes.js';
 	import {
 		PAGE_SIZE,
 		activeFilterCount,
@@ -180,7 +180,7 @@
 
 {#snippet filterbar()}
 <div class="bar" role="group" aria-label="Question filters">
-	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeLabel} />
+	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeOptionLabel} />
 	<FilterDropdown label="Difficulty" options={facetOpts.difficulty} bind:selected={filters.difficulty} />
 	<FilterDropdown label="Source" options={facetOpts.institute} bind:selected={filters.institute} />
 	<FilterDropdown label="Exam" options={facetOpts.exam} bind:selected={filters.exam} />
@@ -245,7 +245,7 @@
 								{#if item.difficulty}
 									<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
 								{/if}
-								<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
+								<span class="chip type" title={qtypeOptionLabel(item.qtype)}>{qtypeLabel(item.qtype)}</span>
 								<AddToCart
 									item={{
 										paperId: item.paperId,

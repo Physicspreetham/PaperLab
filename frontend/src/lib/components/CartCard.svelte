@@ -4,16 +4,16 @@
 	 * (C) actions. Paragraph groups are single items, so every
 	 * reorder/remove op moves the whole block atomically.
 	 */
-	import { qtypeLabel } from '$lib/qtypes.js';
+	import { qtypeLabel, qtypeOptionLabel } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 
-	let { item, onRemove } = $props();
+	let { item, onRemove, typeAction = undefined } = $props();
 
 	const para = $derived(parseParagraphRange(item.number, item.qtype));
 	const qLabel = $derived(qtypeLabel(item.qtype).toUpperCase());
 </script>
 
-<div class="card pl-card">
+<div class="card pl-card" class:needs-add={typeAction === 'Add'} class:needs-remove={typeAction === 'Remove'}>
 	<a
 		class="preview"
 		href={`/cart/${item.paperId}/${encodeURIComponent(item.number)}`}
@@ -40,7 +40,7 @@
 						: para.warning}
 				>Passage · {para.valid ? para.count : '?'}</span>
 			{/if}
-			<span class="chip type" title={`Raw type ${item.qtype}`}>{qLabel}</span>
+			<span class="chip type" title={qtypeOptionLabel(item.qtype)}>{qLabel}</span>
 			{#if item.difficulty}
 				<span class={`chip diff-${String(item.difficulty).toLowerCase()}`}>{item.difficulty}</span>
 			{:else}
@@ -63,6 +63,12 @@
 		flex-direction: column;
 		padding: 14px;
 		gap: 0;
+	}
+	.card.needs-add {
+		background: color-mix(in srgb, var(--pl-surface), var(--pl-pine-soft) 65%);
+	}
+	.card.needs-remove {
+		background: color-mix(in srgb, var(--pl-surface), var(--pl-seal-soft) 65%);
 	}
 	.card:hover {
 		box-shadow: var(--pl-shadow-sm);

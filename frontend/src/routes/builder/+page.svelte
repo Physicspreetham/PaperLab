@@ -5,6 +5,7 @@ import { cartStore } from '$lib/carts.js';
 		builderStore, builder, docOrder, numbering, blockTotal, builderCorrupt, parsedKeys
 	} from '$lib/builder.js';
 	import { sectionAccepts } from '$lib/builderModel.js';
+	import { qtypeOptionLabel } from '$lib/qtypes.js';
 	import BuilderBlock from '$lib/components/BuilderBlock.svelte';
 	import QuestionSheetPreview from '$lib/components/QuestionSheetPreview.svelte';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
@@ -387,7 +388,7 @@ import { cartStore } from '$lib/carts.js';
 							{#if s.atype === 'passage'}
 								<span class="atype passage" title="Structural group: passages stay whole, children keep their own types">PASSAGES</span>
 							{:else}
-								<span class="atype" title={`Auto-grouped ${s.atype}`}>{s.atype.toUpperCase()}</span>
+								<span class="atype" title={qtypeOptionLabel(s.atype)}>{s.atype.toUpperCase()}</span>
 							{/if}
 							<span class="pl-sub count">{secNums.length} q · {secRange}</span>
 							{#if draft.sections.length > 1}

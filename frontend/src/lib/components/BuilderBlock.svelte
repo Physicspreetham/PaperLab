@@ -5,7 +5,7 @@
 	 * never numbers. Sections are fully derived (auto A/B/C), so blocks
 	 * only move within their section or get removed (undoable).
 	 */
-	import { qtypeLabel } from '$lib/qtypes.js';
+	import { qtypeLabel, qtypeOptionLabel } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 	import { numberLabel } from '$lib/numbering.js';
 	import { onMount } from 'svelte';
@@ -108,7 +108,7 @@
 		>P·{para.valid ? para.count : '?'}</span>
 	{/if}
 	{#if showType}
-		<span class="chip type" title={`Raw type ${block.qtype}`}>{qtypeLabel(block.qtype).toUpperCase()}</span>
+		<span class="chip type" title={qtypeOptionLabel(block.qtype)}>{qtypeLabel(block.qtype).toUpperCase()}</span>
 	{/if}
 	<span class="rowops">
 		<span class="mv" role="group" aria-label={`Reorder block ${label}`}>

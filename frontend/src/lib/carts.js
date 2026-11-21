@@ -57,9 +57,34 @@ if (browser && initial.corrupt) {
 
 export const cartStore = writable(initial.store);
 
+let deferModelSave = false;
+let pendingSave = null;
+let saveTimer;
+
+function clearPendingSave() {
+	clearTimeout(saveTimer);
+	pendingSave = null;
+}
+
+function flushPendingSave() {
+	const pending = pendingSave;
+	clearPendingSave();
+	if (pending) persist(pending);
+}
+
 if (browser) {
-	cartStore.subscribe((s) => persist(s));
+	cartStore.subscribe((s) => {
+		clearPendingSave();
+		if (deferModelSave) {
+			// The comparison can render before serializing all saved carts.
+			pendingSave = s;
+			saveTimer = setTimeout(flushPendingSave, 80);
+		} else {
+			persist(s);
+		}
+	});
 	try {
+		window.addEventListener('pagehide', flushPendingSave);
 		window.addEventListener('storage', (e) => {
 			if (e.key !== CART_KEY || !e.newValue) return;
 			try {
@@ -116,6 +141,7 @@ export const carts = {
 			if (!src) return s;
 			const copy = {
 				...createCart(`${src.name} (copy)`),
+				modelPaperId: src.modelPaperId,
 				items: src.items.map((it) => ({ ...toCartItem(it) }))
 			};
 			nid = copy.id;
@@ -143,6 +169,22 @@ export const carts = {
 	},
 	clear() {
 		patchActive((cart) => ({ ...cart, items: [], updatedAt: new Date().toISOString() }));
+	},
+	setModelPaper(modelPaperId) {
+		deferModelSave = true;
+		try {
+			patchActive((cart) => ({ ...cart, modelPaperId, updatedAt: new Date().toISOString() }));
+		} finally {
+			deferModelSave = false;
+		}
+	},
+	unlinkModelPaper(modelPaperId) {
+		cartStore.update((s) => ({
+			...s,
+			carts: s.carts.map((cart) => cart.modelPaperId === modelPaperId
+				? { ...cart, modelPaperId: null, updatedAt: new Date().toISOString() }
+				: cart)
+		}));
 	},
 	/** Returns 'ok' | 'duplicate' | 'invalid' | 'full'. */
 	add(src) {

@@ -179,6 +179,27 @@ def test_union_within_filter_type(search_client):
     assert d["total"] == 4  # 3 scq + 1 int
 
 
+def test_non_negative_integer_formats_are_distinct_search_types(search_client):
+    client, ids = search_client
+    conn = database.get_connection()
+    try:
+        conn.executemany(
+            "INSERT INTO questions (paper_id, question_number, qtype) VALUES (?, ?, ?)",
+            [(ids["p1"], "4", "nni"), (ids["p1"], "5-6_paragraph", "par-nni")],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from backend.routers.search import bump_search_version
+    bump_search_version()
+    assert {"int", "nni", "par-nni"} <= set(_get(client, "/api/papers/meta")["qtypes"])
+    facets = {item["value"]: item["count"] for item in _get(client, "/api/search/facets")["qtypes"]}
+    for qtype, number in [("int", "3"), ("nni", "4"), ("par-nni", "5-6_paragraph")]:
+        assert facets[qtype] == 1
+        data = _get(client, f"/api/search?qtype={qtype}")
+        assert [(i["number"], i["qtype"]) for i in data["items"]] == [(number, qtype)]
+
+
 def test_cursor_bound_to_filters(search_client):
     client, _ = search_client
     d = _get(client, "/api/search?limit=2")

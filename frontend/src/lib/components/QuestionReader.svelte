@@ -13,7 +13,7 @@
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
 	import FigurePanel from '$lib/components/FigurePanel.svelte';
 	import AddToCart from '$lib/components/AddToCart.svelte';
-	import { qtypeLabel } from '$lib/qtypes.js';
+	import { qtypeLabel, qtypeOptionLabel } from '$lib/qtypes.js';
 
 	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive', compact = false } = $props();
 
@@ -194,7 +194,7 @@
 					{/if}
 				</div>
 				<div class="meta-row">
-					<span class="typebadge" title={currentQ.qtype}>{qtypeLabel(currentQ.qtype)}</span>
+					<span class="typebadge" title={qtypeOptionLabel(currentQ.qtype)}>{qtypeLabel(currentQ.qtype)}</span>
 					<span class="difftext">{currentQ.difficulty ?? 'Not graded'}</span>
 				</div>
 				{#if currentQ.topics?.length}

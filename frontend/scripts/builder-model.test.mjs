@@ -96,6 +96,14 @@ describe('builderModel', () => {
 		assert.equal(d.sections[0].blockIds.length, 1);
 		assert.equal(d.sections[2].blockIds.length, 1);
 	});
+	it('gives integer, non-negative integer, and paragraph variants separate sections', () => {
+		const d = importBlocks(createDraft('paper'), [
+			C(11, '8', 'int'), C(11, '9', 'nni'), C(11, '10-11_paragraph', 'par-int'),
+			C(11, '12-13_paragraph', 'par-nni')
+		]).draft;
+		assert.deepEqual(d.sections.map((s) => s.atype), ['int', 'nni', 'par-int', 'par-nni']);
+		assert.equal(assignNumbers(flattenDraft(d)).total, 6);
+	});
 	it('removing the last block of a section prunes it', () => {
 		let d = createDraft('paper');
 		d = importBlocks(d, [C(11, '8', 'scq'), C(11, '9', 'msq')]).draft;

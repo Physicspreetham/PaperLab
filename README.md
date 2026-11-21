@@ -114,10 +114,18 @@ Don't touch `data/` mid-run.
 |---|---|
 | Archive | Browse papers and read questions |
 | Search Questions | Filter by type, difficulty, exam, institute, year, topic (15 per page) |
+| Cart | Collect questions and optionally compare the mix against a saved model paper |
+| Paper Builder | Import a cart into an independent paper or assignment draft |
 | Tagging Inbox | Classify untagged questions (archivist) |
 | Syllabus Map | View/edit the topic tree (archivist for writes) |
 | Intake and Pipeline | Upload, pair, register, run papers (archivist) |
 | Usage Ledger | Token costs + reclaimable-disk cleanup (archivist) |
+
+On the Cart page, open **Model papers** beside the role switch to create, edit,
+or delete a named set of question counts. Select it in the cart to see what to
+add or remove, or choose **None** to hide suggestions. Each paragraph passage
+counts once toward its own paragraph type. Model papers and cart selections
+stay in the current browser.
 
 ## Textbook imports (EJEE)
 
@@ -131,6 +139,20 @@ only what you intend to publish.
 
 Search and reading are open to everyone; uploads, tagging, topics, ledger,
 and figure management need the archivist login.
+
+### Reviewing automatic topic tags
+
+Node 3 lists the main topic first and adds supporting topics only for
+separate physics steps. Archivists can review the tags from a question's
+**Edit classification** panel; the first saved topic is the main one.
+The **Tagging Inbox** shows untagged questions and any explanation of why
+the model could not tag them. A manual classification takes precedence
+over later automatic runs.
+
+For a prompt release, keep the raw model results separate from review
+corrections. Back up the database before publishing a bulk retag and
+retain the prompt version, syllabus mapping, and original model replies
+so reviewers can tell which classification the model actually made.
 
 ---
 

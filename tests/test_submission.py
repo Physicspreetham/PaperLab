@@ -245,6 +245,20 @@ def test_submit_question_upserts_on_recall(tmp_db, tmp_outputs, tmp_path):
     assert n == 1
 
 
+@pytest.mark.parametrize(("number", "qtype"), [("8", "nni"), ("9-10_paragraph", "par-nni")])
+def test_submit_non_negative_integer_formats(tmp_db, tmp_outputs, tmp_path, number, qtype):
+    pid = _paper_id(tmp_db, tmp_path)
+    assert submit_question.invoke({
+        "paper_id": pid, "question_number": number, "latex_content": r"Find $N$.", "qtype": qtype,
+    }) == "saved"
+    conn = database.get_connection()
+    try:
+        row = conn.execute("SELECT qtype FROM questions WHERE paper_id = ?", (pid,)).fetchone()
+        assert row["qtype"] == qtype
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("empty", ["", "   ", "no_solution_found"])
 def test_submit_solution_graceful_placeholder(tmp_db, tmp_outputs, tmp_path, empty):
     pid = _paper_id(tmp_db, tmp_path)
