@@ -124,8 +124,10 @@ Don't touch `data/` mid-run.
 On the Cart page, open **Model papers** beside the role switch to create, edit,
 or delete a named set of question counts. Select it in the cart to see what to
 add or remove, or choose **None** to hide suggestions. Each paragraph passage
-counts once toward its own paragraph type. Model papers and cart selections
-stay in the current browser.
+counts once toward its own paragraph type. The list starts with the
+Physics-section structures of JEE Advanced 2014–2026 (2014 Paper 1 corrected
+to 10 single-correct); paragraph targets count groups. Model papers and cart
+selections stay in the current browser.
 
 ## Textbook imports (EJEE)
 

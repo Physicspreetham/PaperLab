@@ -87,3 +87,39 @@ test('cart model selection defaults to none and survives cart store validation',
 	const { store } = validateStore({ activeId: current.id, carts: [old, current] });
 	assert.deepEqual(store.carts.map((cart) => cart.modelPaperId), [null, 'midterm']);
 });
+
+test('JEE presets merge without duplicating or disturbing user papers', async () => {
+	const { JEE_PRESET_PAPERS } = await import('../src/lib/jeePresets.js');
+	const { withSeededPresets } = await import('../src/lib/modelPaperModel.js');
+	const seeded = withSeededPresets([], JEE_PRESET_PAPERS);
+	assert.equal(seeded.length, 26);
+	assert.equal(seeded[0].id, 'jee-2026-p1');
+	const mine = { id: 'mine', name: 'Mine', counts: { scq: 2 } };
+	const merged = withSeededPresets([mine], JEE_PRESET_PAPERS);
+	assert.equal(merged.length, 27);
+	assert.equal(merged[merged.length - 1], mine);
+	const kept = withSeededPresets([{ ...seeded[0] }, mine], JEE_PRESET_PAPERS);
+	assert.equal(kept.length, 27);
+	assert.deepEqual(kept.filter((p) => p.id === 'jee-2026-p1').length, 1);
+});
+
+test('JEE presets are valid, unique, and use known types', async () => {
+	const { JEE_PRESET_PAPERS } = await import('../src/lib/jeePresets.js');
+	assert.equal(JEE_PRESET_PAPERS.length, 26);
+	assert.deepEqual(new Set(JEE_PRESET_PAPERS.map((p) => p.id)).size, 26);
+	const validated = validateModelPapers(JEE_PRESET_PAPERS);
+	assert.equal(validated.length, 26);
+	assert.equal(validated[0].id, 'jee-2026-p1');
+	for (const paper of JEE_PRESET_PAPERS) {
+		for (const type of Object.keys(paper.counts)) assert.ok(MODEL_PAPER_TYPES.includes(type), type);
+		assert.ok(paper.name.length <= 80);
+	}
+	const byId = Object.fromEntries(JEE_PRESET_PAPERS.map((p) => [p.id, p.counts]));
+	// 2014 Paper 1 correction: single-correct, never multiple-correct.
+	assert.deepEqual(byId['jee-2014-p1'], { scq: 10, nni: 10 });
+	// Single-digit INT (0-9) maps to nni under the format-first rule.
+	assert.deepEqual(byId['jee-2022-p2'], { nni: 8, msq: 6, scq: 4 });
+	assert.deepEqual(byId['jee-2024-p1'], { scq: 4, msq: 3, nni: 6, mtx: 4 });
+	// Paragraph targets count groups: 2 paragraphs of 2 NUM is par-num: 2.
+	assert.deepEqual(byId['jee-2024-p2']['par-num'], 2);
+});

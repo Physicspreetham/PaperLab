@@ -1,13 +1,32 @@
 import { browser } from '$app/environment';
 import { readonly, writable } from 'svelte/store';
 import { newId } from './cartModel.js';
-import { modelPaperInput, validateModelPapers } from './modelPaperModel.js';
+import { modelPaperInput, validateModelPapers, withSeededPresets } from './modelPaperModel.js';
+import { JEE_PRESET_PAPERS } from './jeePresets.js';
 
 const KEY = 'pl-model-papers-v1';
+const SEED_KEY = 'pl-model-papers-seed-v1';
+
 function load() {
 	if (!browser) return [];
 	try {
-		return validateModelPapers(JSON.parse(localStorage.getItem(KEY)));
+		const raw = localStorage.getItem(KEY);
+		const papers = raw == null ? [] : validateModelPapers(JSON.parse(raw));
+		try {
+			// One-time merge: browsers that stored a list before the presets
+			// shipped get the missing ones added. Afterwards the stored
+			// list is authoritative, so edits and deletes are never
+			// overwritten or resurrected.
+			if (!localStorage.getItem(SEED_KEY)) {
+				const merged = withSeededPresets(papers, JEE_PRESET_PAPERS);
+				localStorage.setItem(KEY, JSON.stringify(merged));
+				localStorage.setItem(SEED_KEY, '1');
+				return merged;
+			}
+		} catch {
+			// Keep the in-memory list if storage is unavailable.
+		}
+		return papers;
 	} catch {
 		return [];
 	}
