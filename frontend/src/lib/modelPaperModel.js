@@ -63,6 +63,15 @@ export function validateModelPapers(raw) {
 	return papers;
 }
 
+/** Add any missing JEE presets in front, keeping the user's own papers after. */
+export function withSeededPresets(papers, presets) {
+	const ids = new Set(papers.map((p) => p.id));
+	return [
+		...validateModelPapers(presets).filter((p) => !ids.has(p.id)),
+		...papers
+	];
+}
+
 /** Group in the shared type order, preserving the original order within a type. */
 export function groupCartItems(items) {
 	const groups = SECTION_TYPES.map((type) => ({ type, items: [] }));
