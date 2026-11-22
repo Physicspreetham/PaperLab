@@ -444,6 +444,7 @@ def extract_item(manifest, item, cfg, run):
     crop_attempts = defaultdict(int)
     attempt_log = defaultdict(list)
     clear_figures = set()
+    last_box, same_box = {}, defaultdict(int)
     # Reserve a few extra calls for figure-heavy questions that are making
     # progress. Repeated crops of the same filename do not earn more calls.
     max_extra_turns = 6 if optimized else 0
@@ -502,7 +503,7 @@ def extract_item(manifest, item, cfg, run):
                 if optimized and name in ('assisted_crop', 'exact_crop'):
                     # Both mapped crop tools operate on the original source canvas.
                     # Do not invoke PDF crop heuristics or their conflicting feedback.
-                    from raster_figures import clear_crop_edges, crop_figure as probe_crop, snap_to_ink_blobs
+                    from raster_figures import clear_crop_edges, crop_figure as probe_crop, snap_to_ink_blobs, snap_within_reach
                     side = 'question' if args['pdf_path'] == manifest['question_pdf'] else 'solution'
                     idx = item[f'{side}_pages'].index(args['page_number'])
                     body = item[f'{side}_rows'][idx]['asset_evidence']['body_png']
@@ -515,6 +516,8 @@ def extract_item(manifest, item, cfg, run):
                                  min(source.width, math.ceil((x+w)*source.width/1000)),
                                  min(source.height, math.ceil((y+h)*source.height/1000))]
                         snapped = snap_to_ink_blobs(source, rough) if rough[2] > rough[0] and rough[3] > rough[1] else None
+                        if snapped and not snap_within_reach(snapped, rough):
+                            snapped = None  # blob bridged into neighbouring text; trust the model's box
                         if snapped and not probe_crop(source, snapped, pixel_box=True)[1]['edge_warnings']:
                             box = [snapped[0]*1000/source.width, snapped[1]*1000/source.height,
                                    (snapped[2]-snapped[0])*1000/source.width, (snapped[3]-snapped[1])*1000/source.height]
@@ -572,6 +575,18 @@ def extract_item(manifest, item, cfg, run):
                             note += (' Blank cut candidates (absolute normalized x or y, 0–1000): '
                                      + json.dumps(cuts) + '. Choose only a cut that keeps every diagram element. '
                                      'For right/bottom cuts, calculate width/height from the chosen absolute edge.')
+                        fingerprint = tuple(round(v) for v in json.loads(final[1]))
+                        fname = args['output_filename']
+                        same_box[fname] = same_box[fname] + 1 if last_box.get(fname) == fingerprint else 0
+                        last_box[fname] = fingerprint
+                        if same_box[fname] and not auto_note:
+                            if not review['edge_warnings']:
+                                clear_figures.add(fname)
+                            note = ('NO CHANGE: your adjusted numbers produced exactly the same final box as the previous '
+                                    'attempt, so recropping again will not help. ' + (
+                                    'This crop has clean edges: accept it, reference it and submit the transcription now.'
+                                    if not review['edge_warnings'] else
+                                    'Choose a clearly different box (use the detected blocks / blank cuts above) or submit with this crop.'))
                         if optimized:
                             from efficient_extractor import prune_old_preview
                             messages=[m.model_copy(update={'content':prune_old_preview(m.content,args['output_filename'])}) if isinstance(m,HumanMessage) else m for m in messages]

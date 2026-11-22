@@ -288,6 +288,17 @@ def snap_to_ink_blobs(image, box_px, components=None):
             min(image.width, merged[2] + margin), min(image.height, merged[3] + margin)]
 
 
+def snap_within_reach(snapped, rough, slack=.2):
+    """True when snapping stayed near the model's box (<= slack of its size per side).
+
+    Ink blobs can bridge a diagram and neighbouring text (e.g. an options row), so an
+    unbounded snap silently swallows the text and every retry returns the same box.
+    """
+    dx = slack * (rough[2] - rough[0]); dy = slack * (rough[3] - rough[1])
+    return (snapped[0] >= rough[0] - dx and snapped[1] >= rough[1] - dy
+            and snapped[2] <= rough[2] + dx and snapped[3] <= rough[3] + dy)
+
+
 def figure_candidates(image, limit=6):
     """Diagram-like ink blobs as normalized [x, y, width, height] (0-1000), largest first."""
     width, height = image.size
