@@ -87,7 +87,9 @@ def _split_math(text):
     while i < n:
         c = text[i]
         if c == "\\" and text[i + 1 : i + 2] == "$":
-            buf.append("\x00DOL\x00")  # escaped dollar: literal, never math
+            # Keep the Markdown escape. The REST renderer also calls this
+            # splitter directly and has no private marker to restore.
+            buf.append("\\$")
             i += 2
         elif c == "\\" and text[i + 1 : i + 2] == "\\":
             buf.append("\\\\")  # row break, consumed as a unit

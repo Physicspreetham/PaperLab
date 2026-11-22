@@ -72,11 +72,13 @@ def _seed_archive(tmp_path, monkeypatch):
     return adir
 
 
-def test_intermediates_purge_covers_crops(tmp_db, tmp_path, monkeypatch):
+def test_intermediates_purge_covers_crops(tmp_db, tmp_outputs, tmp_path, monkeypatch):
     import database as _db
     from backend.routers import stats as st
 
     adir = _seed_archive(tmp_path, monkeypatch)
+    # The combined purge also sweeps cleaned PDFs and render outputs.
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR", tmp_path / "cleaned")
     (adir / "a_QP_crop.pdf").write_bytes(b"%PDF" + b"c" * 500)
     keep_crop = adir / "b_QP_crop.pdf"
     keep_crop.write_bytes(b"%PDF" + b"k" * 700)

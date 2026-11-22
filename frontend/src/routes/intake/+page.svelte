@@ -1,14 +1,15 @@
 <script>
-	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { api } from '$lib/api.js';
 	import { role } from '$lib/stores.js';
 	import SegmentedTabs from '$lib/components/SegmentedTabs.svelte';
 
 	const isArchivist = $derived($role === 'archivist');
 
-	let tab = $state('stage');
 	let jobs = $state({ running: [], finished: [] });
 	let error = $state('');
+	let refreshing = $state(false);
 
 	// Stage tab
 	let qFiles = $state(null);
@@ -40,6 +41,17 @@
 		{ id: 'verify', label: 'Verify pairs' },
 		{ id: 'pipeline', label: 'Pipeline' }
 	];
+	const tab = $derived(tabs.find(({ id }) => id === $page.url.searchParams.get('tab'))?.id ?? 'stage');
+
+	function setTab(id) {
+		const url = new URL($page.url);
+		url.searchParams.set('tab', id);
+		void goto(url, { keepFocus: true, noScroll: true });
+	}
+
+	function paperName(paper) {
+		return paper.title || paper.questionPdf?.split('/').pop() || 'Untitled paper';
+	}
 
 	async function loadJobs() {
 		jobs = await api.getJobs();
@@ -59,16 +71,22 @@
 	}
 
 	async function loadPapers() {
-		papers = (await api.listPapers()).filter((p) => p.status !== 'done');
+		const queued = (await api.listPapers()).filter((p) => p.status !== 'done');
+		papers = queued;
+		const available = new Set(queued.map((paper) => paper.id));
+		selected = selected.filter((id) => available.has(id));
 	}
 
-	onMount(async () => {
-		if (!isArchivist) return;
-		try {
-			await Promise.all([loadJobs(), loadStaged(), loadPairs(), loadPapers()]);
-		} catch (e) {
-			error = e.message;
-		}
+	async function refresh(loaders) {
+		refreshing = true;
+		error = '';
+		const results = await Promise.allSettled(loaders.map((load) => load()));
+		error = results.find((result) => result.status === 'rejected')?.reason.message ?? '';
+		refreshing = false;
+	}
+
+	$effect(() => {
+		if (isArchivist) void refresh([loadJobs, loadStaged, loadPairs, loadPapers]);
 	});
 
 	async function upload() {
@@ -140,11 +158,13 @@
 		if (!selected.length) return;
 		armDelPapers = false;
 		starting = true;
+		runMsg = '';
 		try {
-			await api.runPapers(selected, mode, force);
-			await loadJobs();
+			const { started } = await api.runPapers(selected, mode, force);
+			runMsg = started.length ? 'Run submitted. Refresh to check progress.' : 'No new run started.';
+			await refresh([loadJobs, loadPapers]);
 		} catch (e) {
-			error = e.message;
+			runMsg = `Could not start run: ${e.message}`;
 		} finally {
 			starting = false;
 		}
@@ -185,11 +205,11 @@
 		<p>This area needs archivist access. Use the role switch in the sidebar to log in.</p>
 	</div>
 {:else}
-	<SegmentedTabs {tabs} bind:value={tab} />
+	<SegmentedTabs {tabs} bind:value={() => tab, setTab} />
 
 	{#if error}
 		<div class="pl-error" role="alert" style="margin-top: 12px">
-			<strong>Backend unreachable.</strong>
+			<strong>Could not load some intake data.</strong>
 			<p class="pl-mono">{error}</p>
 		</div>
 	{/if}
@@ -244,7 +264,7 @@
 					<div class="pair">
 						<strong>{pair.question}</strong>
 						<select bind:value={choices[pair.question]} aria-label={`Solution for ${pair.question}`}>
-							<option value="none">None - questions only</option>
+							<option value="none">No separate solution PDF</option>
 							<option value="same">Same file (combined)</option>
 							{#each solutions as s (s)}
 								<option value={s}>{s}</option>
@@ -256,13 +276,18 @@
 					<button type="button" class="pl-btn pl-btn-primary" disabled={registering} onclick={register}>
 						{registering ? 'Registering…' : 'Confirm pairs & register'}
 					</button>
-					{#if verifyMsg}<span class="pl-sub" role="status">{verifyMsg}</span>{/if}
 				</div>
 			{/if}
+			{#if verifyMsg}<p class="pl-sub" role="status">{verifyMsg}</p>{/if}
 		</div>
 	{:else}
 		<div class="pl-card panel">
-			<h2>Pipeline</h2>
+			<div class="panel-heading">
+				<h2>Pipeline</h2>
+				<button type="button" class="pl-btn" disabled={refreshing} onclick={() => refresh([loadJobs, loadPapers])}>
+					{refreshing ? 'Refreshing…' : 'Refresh'}
+				</button>
+			</div>
 			<h3>Background jobs</h3>
 			{#if jobs.running.length === 0 && jobs.finished.length === 0}
 				<p class="pl-sub">No jobs yet.</p>
@@ -271,7 +296,7 @@
 					{#each jobs.running as job (job.key)}
 						<li class="pl-mono">{job.key} - running…</li>
 					{/each}
-					{#each jobs.finished as job (job.key + job.status)}
+					{#each jobs.finished as job}
 						<li class="pl-mono">{job.key} - {job.status} ({job.info})</li>
 					{/each}
 				</ul>
@@ -284,7 +309,10 @@
 					{#each papers as p (p.id)}
 						<label>
 							<input type="checkbox" value={p.id} bind:group={selected} />
-							<span>#{p.id} - {p.title} <span class="pl-mono">({p.status})</span></span>
+							<span class="paper-detail">
+								#{p.id} - {paperName(p)} <span class="pl-mono">({p.status})</span>
+								{#if p.error}<span class="paper-error pl-sub">{p.error}</span>{/if}
+							</span>
 						</label>
 					{/each}
 				</div>
@@ -312,8 +340,8 @@
 						{deletingPapers ? 'Deleting…' : armDelPapers ? `Click again to delete ${selected.length}` : 'Delete selected'}
 					</button>
 				</div>
-				{#if runMsg}<p class="pl-sub" role="status">{runMsg}</p>{/if}
 			{/if}
+			{#if runMsg}<p class="pl-sub" role="status">{runMsg}</p>{/if}
 		</div>
 	{/if}
 {/if}
@@ -333,6 +361,12 @@
 	.panel h3 {
 		font-size: 1rem;
 		margin-top: 16px;
+	}
+	.panel-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
 	}
 	.upload {
 		display: flex;
@@ -360,6 +394,13 @@
 		align-items: center;
 		gap: 10px;
 		padding: 6px 0;
+	}
+	.paper-detail {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.paper-error {
+		display: block;
 	}
 	.pair {
 		display: grid;

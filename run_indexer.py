@@ -67,6 +67,10 @@ def main(argv: list[str] | None = None) -> int:
     elif final.get("status") == "split_failed":
         database.set_paper_status(paper_id, "failed", "combined split failed",
                                   elapsed)
+    elif final.get("status") != "indexer_complete":
+        database.set_paper_status(
+            paper_id, "failed", "indexer produced no boundaries", elapsed
+        )
     else:
         # Indexed, awaiting extraction -> back to the queue.
         database.set_paper_status(paper_id, "uploaded")
@@ -83,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
           f"(reasoning {tokens['reasoning']})")
     print(f"Total Tokens:       {tokens['input'] + tokens['output']}")
     print(f"DB row:       {dict(row) if row else None}")
-    return 0
+    return int(final.get("status") not in (
+        "indexer_complete", "aborted_no_text", "split_failed",
+    ))
 
 
 if __name__ == "__main__":

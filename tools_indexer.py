@@ -26,6 +26,8 @@ Routing contract for the LLM:
 
 from __future__ import annotations
 
+import os
+
 import fitz  # PyMuPDF
 from langchain_core.tools import tool
 
@@ -192,11 +194,14 @@ def submit_metadata_and_boundaries(
                 f"paper_id {paper_id} does not exist; "
                 "it must come from pre-flight registration via LangGraph state"
             )
-        import os as _os
-
         q_path, s_path = row["question_pdf_path"], row["solution_pdf_path"]
-        combined = bool(s_path) and bool(q_path) and _os.path.realpath(
-            s_path) == _os.path.realpath(q_path)
+        same_file = (
+            s_path and q_path and os.path.realpath(s_path) == os.path.realpath(q_path)
+        )
+        # With no separate solution uploaded, the indexer can discover a
+        # key and worked solutions appended to the question PDF. The split
+        # node reads from q_path, so no temporary solution path is needed.
+        combined = same_file or (not s_path and sol_section_start > 1)
         if combined:
             # Combined single file: split point lives in the question file,
             # after the questions, at or before the first solution page.
@@ -211,11 +216,11 @@ def submit_metadata_and_boundaries(
                     f"got q {q_start}-{q_end}, split {sol_section_start}, "
                     f"s {s_start}-{s_end}"
                 )
-        elif sol_section_start > 1:
+        elif sol_section_start > 1 or (sol_section_start == 1 and not s_path):
             raise ValueError(
-                "sol_section_start > 1 is only for a combined single file "
-                "(solution == question); separate PDFs must pass 1, "
-                "questions-only must pass 0"
+                "For separate PDFs pass sol_section_start=1; for solutions "
+                "inside the question PDF pass their original start page (>1); "
+                "for questions-only pass 0"
             )
         cur = conn.execute(
             """

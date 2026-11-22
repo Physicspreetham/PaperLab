@@ -5,13 +5,19 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 1. **Strict Transcription:** Do not solve, rewrite, paraphrase, or silently correct. Preserve wording, symbols, signs, values, units, subscripts/superscripts, fractions, option labels/order, multi-statement structure, math and units, figure labels/markings EXACTLY as seen. 
 2. **Unreadable Content:** Flag `[UNREADABLE]` where illegible. NEVER guess or hallucinate text or math.
 3. **Visual Structure:** Your LaTeX must visually follow the exact structure, alignment, and formatting of the question in the image.
-4. **Key Sheet:** Combined single-file papers are SPLIT for you before you start, so you ALWAYS see two files: questions + a solution PDF whose page 1 is the key/answer table (when the paper has one). The final answers are on page 1 of the solution PDF. The very first line of every solution block MUST be the answer in bold: `\textbf{Answer: 23) A}`. Never write `23-A` (it reads like subtraction) and never put the key in a `%` comment (comments are invisible when rendered). Groups repeat the block once per sub-question (see LINKED QUESTIONS). (Some papers have no separate key sheet: page 1 is already a solution -- then take each answer from that solution's own conclusion.)
+4. **Answer key:** Combined papers are split before extraction. If a solution PDF is provided, use its first-page key when present; otherwise take each answer from its worked solution. Start each solution block with the answer in bold: `\textbf{Answer: 23) A}`. Never write `23-A` or hide the key in a `%` comment. Repeat the block for each sub-question in a group. If no solution PDF is provided, follow the questions-only branch in step 3.
 5. **Figure Completeness (questions AND solutions, no exceptions):** Every diagram, graph, circuit, plot, or ray picture that belongs to the question or solution you are transcribing MUST be cropped, MUST meet the PERFECT FIGURE standard below, and MUST be referenced via `\includegraphics{figures/qfigN.png}` in `question.tex` / `sfigN.png` in `solution.tex`; an unreferenced crop renders nothing. `assisted_crop` first; `exact_crop` only after 3 failed `assisted_crop` attempts on the SAME figure. Transcription rules (wording, symbols, structure, option layout) apply identically to questions and solutions.
 
+# HANDWRITTEN CONTENT
+- Transcribe handwritten words and equations that are part of the question or solution just like printed content, including inline corrections, margin working, and derivations beside a figure. Keep them in source reading order. Use `[UNREADABLE]` for unclear text or symbols; do not fill in steps. Omit only clearly crossed-out working.
+- Crop hand-drawn figures and their annotations whole. Labels, arrows, and notes that identify or point to parts of the drawing belong in the crop, not in the LaTeX. Separate working belongs in LaTeX even if it shares the same embedded image or sits next to the drawing. Do not duplicate it in the crop.
+
 # AGENT NOTES (previously verified mistakes -- do not repeat)
+- **A snap can lose pen annotations.** In the Vernier-caliper solution (Q34), the tool snapped to the printed pencil diagram and dropped the red scale marks, arrows, and labels visible on the page. Compare the preview with the full rendered page, not just the embedded image. If any diagram annotation is missing, reject the crop and retry under the same filename using the normal assisted/exact rules. Keep diagram labels in the image, not in the transcription as a substitute.
+- **Check math before submitting.** Q34's handwritten derivation had an unmatched `$`, which made later fractions and equations render as plain text. Keep each equation and its units inside a matched pair of delimiters (e.g. `$\mathrm{LC}=\frac{1\,\mathrm{mm}}{5}$`); keep surrounding prose outside, with no stray `$` or bare `\frac`.
 - Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. Backticks around `$...$` are auto-unwrapped on save, but a bare `` `k' `` (no `$` delimiters) is rejected and you will have to redo the submission -- when in doubt, write `$k$` yourself.
 - Never transcribe section headers or section instructions into a question: `SECTION-I`, `(Maximum Marks: 24)`, `This section contains SIX (06) questions`, marking-scheme blocks and other boilerplate are dropped entirely. Each `question.tex` starts at the question number itself.
-- Lookalike symbols: `$v_S$` vs `$v_5$`, `$\Delta p$` vs `$\Delta\rho$`, `$\theta$` vs `$\square$` -- when the glyph is ambiguous, pick the one the physical quantity demands (a moving source is `$v_S$`, airflow holding a plate is `$\Delta p$`, an angle is `$\theta$`). Pixels second, physics first. You (this same model) previously wrote `$(\square) = 45^{\circ}$` for `$(\theta)$` and `$\square_{ice}$` for `$\rho_{ice}$`, then recognised the correct symbol from the sentence alone -- so you can do it at transcription time too.
+- For lookalikes such as `$v_S$` vs `$v_5$` or `$\Delta p$` vs `$\Delta\rho$`, compare the visible glyph with clearer occurrences, definitions, and labels in the source. If it is still unclear, use `[UNREADABLE]`. Do not replace a readable symbol with what you think the physics requires.
 
 # QUESTION TYPES (read the SECTION header first, not the question alone)
 Each page belongs to a SECTION with an instruction block (e.g. "SECTION-I: Single Correct", "This section contains 6 questions, +3 / -1, one or more correct", "Match List-I with List-II", "Numerical Value", "Paragraph"). That block is the PRIMARY signal for `qtype`. The question image confirms it. Never transcribe the block (per directive 13) -- just read it for typing.
@@ -106,7 +112,8 @@ the gap between that text and the diagram. Exception -- intentional
    termination -- that means your box is too small, expand it. If
    uncertain, expand.
 - **Reply meanings:** `mode: snap` = your box matched an embedded image and
-  the original was returned -- accept unless the preview is clearly wrong (some times the the solution text is included in the snap image then prefer exact crop as solution is translated to latex).
+  the original was returned. If it includes separate working or misses a
+  diagram annotation, reject that preview and follow the normal retry rule.
   `mode: vector` = strokes completed/trimmed your box -- use its reported
   final box as the starting point of your next adjustment.   `mode: plain` =
   no art found, your box saved as-is plus auto-expansion where ink
@@ -137,9 +144,14 @@ Process the document efficiently to save tokens:
    a. Crop the question's figures to the FIGURE STANDARD and verify each preview.
    b. Draft the LaTeX (using `\includegraphics[width=\linewidth]{figures/your_filename.png}` for crops).
    c. Call `submit_question` (using a string `question_number`, e.g., "15" or "15-17_paragraph"). The submit tools compile the LaTeX for you; if they return NOT SAVED, fix the listed problems and resubmit. The submitter turns every line break into a new paragraph, so write the stem on ONE line (never hard-wrap it across lines) and put the options inside `\begin{enumerate}` with one `\item` per option. If you wrote options as bare `\textbf{A)} ... \textbf{B)} ...` lines instead, keep each option on its own line (never two options on one line) -- the submit separates them into paragraphs automatically.
-3. Call `get_page_text` for page 1 of the solution PDF to get the answer key (cheap text read -- no image needed). If page 1 is a key/answer table, use it for all `Answer:` lines. If page 1 is already a worked solution (no key sheet in this paper), skip this: take each answer from its own solution's conclusion when you transcribe it.
+3. **Questions-only branch:** If no solution PDF is provided, call `submit_solution` for each saved question or group with the same ID and `latex_content` set to exactly `no_solution_found`. Do not call any solution-page tools or infer an answer. Then go to step 6. Otherwise, check page 1 of the solution PDF for the answer key with `get_page_text`; if the key is image-only, use `get_page_image`. If page 1 is a worked solution instead, use the conclusions of the worked solutions.
 4. Call `get_page_image` for the corresponding solution page(s).
 5. For EVERY solution matching the questions or groups you just extracted:
+   Before drafting, check where the worked solution ends. If it reaches the
+   bottom of the page, or the next question or subject heading is not yet
+   visible, inspect the next page within the supplied physics range. Include
+   any continuation before that heading, including handwritten lines and
+   figures, in the same solution.
    a. Crop the solution's figures to the FIGURE STANDARD and check every cropped file is referenced before submitting.
    b. Draft the LaTeX in exactly this layout (blank lines between blocks):
       `\textbf{Answer: 29) 3}`

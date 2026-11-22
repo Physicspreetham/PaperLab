@@ -1605,7 +1605,7 @@ def assisted_crop(
 
 @tool
 def verify_latex_syntax(latex_string: str) -> str:
-    """Check LaTeX for unbalanced braces and mismatched environments.
+    """Check LaTeX for unbalanced braces, dollar delimiters and environments.
 
     Run drafted question/solution LaTeX through this BEFORE submitting; fix
     reported errors and re-verify until it returns "Valid".
@@ -1669,6 +1669,29 @@ def verify_latex_syntax(latex_string: str) -> str:
                 stack.pop()
     for env in reversed(stack):
         errors.append(f"Unclosed \\begin{{{env}}}")
+
+    # Escaped dollars, code and comments cannot open math. A missing $
+    # otherwise survives submission, and can turn later equations into prose.
+    pending = None
+    for m in re.finditer(
+        r"\\begin\{verbatim\*?\}[\s\S]*?\\end\{verbatim\*?\}|\\[\s\S]|%[^\n]*|\$\$?",
+        latex_string,
+    ):
+        token = m.group()
+        if token not in ("$", "$$"):
+            continue
+        if pending is None:
+            pending = token
+        elif token == pending:
+            pending = None
+        elif pending == "$":
+            # In inline math, adjacent dollars can close one span and
+            # immediately open the next: $x$$y$.
+            continue
+        else:
+            break
+    if pending is not None:
+        errors.append(f"Unpaired {pending} math delimiter; check the start and end of each formula")
 
     return "Valid" if not errors else "; ".join(errors)
 

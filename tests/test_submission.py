@@ -206,6 +206,29 @@ def test_verify_latex_stray_end():
     assert out != "Valid"
 
 
+@pytest.mark.parametrize("bad", [r"$x=1$ then $\frac{1}{25}", "$$x=1$"])
+def test_verify_latex_rejects_unpaired_dollar_math(bad):
+    assert "Unpaired" in verify_latex_syntax.invoke({"latex_string": bad})
+
+
+def test_verify_latex_ignores_literal_dollars_and_accepts_display_math():
+    good = "Pay \\$5. % ignored $\n$x=1$$u=3$\n$$y=2$$"
+    assert verify_latex_syntax.invoke({"latex_string": good}) == "Valid"
+
+
+def test_submit_solution_does_not_save_unpaired_math(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    assert submit_question.invoke({
+        "paper_id": pid, "question_number": "34", "latex_content": "34. Example.",
+    }) == "saved"
+    result = submit_solution.invoke({
+        "paper_id": pid, "question_number": "34",
+        "latex_content": "\\textbf{Answer: 34) 8.48}\n\n$R=8.48",
+    })
+    assert result.startswith("NOT SAVED:") and "Unpaired $" in result
+    assert not (dm.get_question_dir(pid, "34") / "solution.tex").exists()
+
+
 def test_submit_question_grouped_number(tmp_db, tmp_outputs, tmp_path):
     pid = _paper_id(tmp_db, tmp_path)
     ok = submit_question.invoke({

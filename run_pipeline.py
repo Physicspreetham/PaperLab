@@ -148,7 +148,8 @@ def run_pipeline(paper_id: int, force: bool = False,
                 "summary": summarize_tokens(paper_id),
                 "elapsed_sec": elapsed,
             }
-        if database.get_paper(paper_id)["q_start"] is None:
+        if (final1.get("status") != "indexer_complete"
+                or database.get_paper(paper_id)["q_start"] is None):
             # Idle indexer (LLM stopped without submitting): never hand an
             # unindexed paper to the extractor as a phantom "done".
             elapsed = time.time() - t0
