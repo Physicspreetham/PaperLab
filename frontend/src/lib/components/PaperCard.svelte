@@ -1,5 +1,6 @@
 <script>
 	import { qtypeLabelAll } from '$lib/qtypes.js';
+	import PaperCartToggle from '$lib/components/PaperCartToggle.svelte';
 
 	let { paper, questions = 0, types = '' } = $props();
 </script>
@@ -25,6 +26,7 @@
 	</div>
 	<div class="paper-actions">
 		<a class="pl-btn pl-btn-primary" href={`/archive/${paper.id}`}>Open</a>
+		<PaperCartToggle {paper} expected={questions} />
 	</div>
 </article>
 
@@ -62,7 +64,9 @@
 	.paper-actions {
 		display: flex;
 		flex-direction: column;
+		align-items: flex-end;
 		justify-content: center;
+		gap: 8px;
 		flex-shrink: 0;
 	}
 </style>

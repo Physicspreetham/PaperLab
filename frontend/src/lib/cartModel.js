@@ -85,6 +85,62 @@ export function removeItem(cart, paperId, number) {
 	return { cart: { ...cart, updatedAt: new Date().toISOString(), items }, removed: true };
 }
 
+/** Build the same lightweight snapshot from a reader question or a whole paper. */
+export function questionCartSnapshot(paper, question) {
+	let preview = '';
+	let thumb = null;
+	for (const segment of question.question ?? []) {
+		if (!preview && segment?.kind === 'text' && typeof segment.html === 'string') {
+			preview = segment.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+		}
+		if (!thumb && segment?.kind === 'fig' && segment.url) thumb = segment.url;
+		if (preview && thumb) break;
+	}
+	return {
+		paperId: question.paperId ?? paper?.id,
+		number: question.number,
+		qtype: question.qtype,
+		difficulty: question.difficulty ?? null,
+		preview,
+		thumb,
+		exam: paper?.exam ?? '',
+		institute: paper?.institute ?? ''
+	};
+}
+
+/** Add the missing questions, or remove the paper if every current question is in the cart. */
+export function togglePaper(cart, paperId, questions) {
+	const wanted = new Map();
+	for (const src of questions) {
+		const item = toCartItem(src);
+		if (!item || item.paperId !== paperId) return { cart, action: 'invalid', count: 0 };
+		wanted.set(item.number, item);
+	}
+	if (!wanted.size) return { cart, action: 'empty', count: 0 };
+	const have = new Set(
+		cart.items.filter((it) => it.paperId === paperId).map((it) => String(it.number))
+	);
+	const missing = [...wanted.values()].filter((it) => !have.has(it.number));
+	if (cart.items.length + missing.length > MAX_ITEMS_PER_CART)
+		return { cart, action: 'full', count: 0 };
+	const items = missing.length
+		? [...cart.items, ...missing]
+		: cart.items.filter((it) => it.paperId !== paperId);
+	return {
+		cart: { ...cart, items, updatedAt: new Date().toISOString() },
+		action: missing.length ? 'added' : 'removed',
+		count: missing.length || cart.items.length - items.length
+	};
+}
+
+/** Remove every question of one paper; returns {cart, count}. */
+export function removePaper(cart, paperId) {
+	const items = cart.items.filter((it) => it.paperId !== paperId);
+	const count = cart.items.length - items.length;
+	if (!count) return { cart, count: 0 };
+	return { cart: { ...cart, items, updatedAt: new Date().toISOString() }, count };
+}
+
 /** Validate a parsed store blob; returns {ok, store} with repairs applied. */
 export function validateStore(raw) {
 	const fresh = () => {

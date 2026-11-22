@@ -55,7 +55,7 @@
 
 <h1>Question cart</h1>
 <p class="pl-sub">
-	Pick questions from Search or the reader. Carts live only in this browser —
+	Pick questions from Search, the reader, or a whole Archive paper. Carts live only in this browser —
 	no server changes, no uploads. A cart tracks which questions are in, not
 	their order — paragraph groups stay together as one block.
 </p>

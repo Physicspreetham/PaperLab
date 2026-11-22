@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { parseParagraphRange } from '../src/lib/paragraph.js';
 import { normalizeAnswerType } from '../src/lib/qtypes.js';
 import {
-	createCart, addItem, removeItem, validateStore, toCartItem
+	createCart, addItem, removeItem, removePaper, togglePaper, validateStore, toCartItem,
+	questionCartSnapshot
 } from '../src/lib/cartModel.js';
 
 const Q = (paperId, number, extra = {}) => ({
@@ -132,5 +133,61 @@ describe('cartModel', () => {
 		assert.equal(it.preview, '<p>hi</p>');
 		assert.ok(!('question' in it));
 		assert.ok(!('segments' in it));
+	});
+	it('togglePaper adds only the missing questions, then removes the paper', () => {
+		let c = createCart('t');
+		c = addItem(c, Q(11, '8')).cart;
+		let r = togglePaper(c, 11, [Q(11, '8'), Q(11, '9')]);
+		assert.equal(r.action, 'added');
+		assert.equal(r.count, 1);
+		assert.equal(r.cart.items.length, 2);
+		r = togglePaper(r.cart, 11, [Q(11, '8'), Q(11, '9')]);
+		assert.equal(r.action, 'removed');
+		assert.equal(r.count, 2);
+		assert.equal(r.cart.items.length, 0);
+	});
+	it('togglePaper touches only its own paper and respects the cap', () => {
+		let c = createCart('t');
+		c = addItem(c, Q(9, '1')).cart;
+		const r = togglePaper(c, 11, [Q(11, '8')]);
+		assert.equal(r.action, 'added');
+		assert.deepEqual(
+			r.cart.items.map((it) => `${it.paperId}::${it.number}`).sort(),
+			['11::8', '9::1']
+		);
+		assert.equal(togglePaper(c, 11, []).action, 'empty');
+		assert.equal(togglePaper(c, 12, [Q(11, '8')]).action, 'invalid');
+	});
+	it('removePaper drops one paper and keeps the rest', () => {
+		let c = createCart('t');
+		c = addItem(c, Q(11, '8')).cart;
+		c = addItem(c, Q(11, '9')).cart;
+		c = addItem(c, Q(9, '1')).cart;
+		const r = removePaper(c, 11);
+		assert.equal(r.count, 2);
+		assert.deepEqual(r.cart.items.map((it) => `${it.paperId}::${it.number}`), ['9::1']);
+	});
+	it('questionCartSnapshot keeps the reader and paper snapshots identical', () => {
+		const paper = { id: 11, exam: 'JEE Advanced', institute: 'Narayana' };
+		const question = {
+			paperId: 11,
+			number: '8',
+			qtype: 'scq',
+			difficulty: 'Medium',
+			question: [
+				{ kind: 'text', html: '<p>Find <b>x</b></p>' },
+				{ kind: 'fig', url: '/api/papers/11/questions/8/figures/qfig1.png' }
+			]
+		};
+		assert.deepEqual(questionCartSnapshot(paper, question), {
+			paperId: 11,
+			number: '8',
+			qtype: 'scq',
+			difficulty: 'Medium',
+			preview: 'Find x',
+			thumb: '/api/papers/11/questions/8/figures/qfig1.png',
+			exam: 'JEE Advanced',
+			institute: 'Narayana'
+		});
 	});
 });

@@ -13,6 +13,7 @@
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
 	import FigurePanel from '$lib/components/FigurePanel.svelte';
 	import AddToCart from '$lib/components/AddToCart.svelte';
+	import { questionCartSnapshot } from '$lib/cartModel.js';
 	import { qtypeLabel, qtypeOptionLabel } from '$lib/qtypes.js';
 
 	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive', compact = false } = $props();
@@ -37,41 +38,7 @@
 
 	let currentQ = $state(null);
 
-	function plainPreview(segs) {
-		for (const s of segs ?? []) {
-			if (s?.kind === 'text' && typeof s.html === 'string') {
-				const t = s.html
-					.replace(/<[^>]*>/g, ' ')
-					.replace(/\s+/g, ' ')
-					.trim();
-				if (t) return t.slice(0, 300);
-			}
-		}
-		return '';
-	}
-
-	function firstFigUrl(segs) {
-		for (const s of segs ?? []) {
-			if (s?.kind === 'fig' && s.url) return s.url;
-		}
-		return null;
-	}
-
-	const cartItem = $derived(
-		currentQ
-			? {
-					paperId: currentQ.paperId,
-					number: currentQ.number,
-					qtype: currentQ.qtype,
-					difficulty: currentQ.difficulty ?? null,
-					preview: plainPreview(currentQ.question),
-					thumb: firstFigUrl(currentQ.question),
-					exam: paper?.exam ?? '',
-					year: null,
-					institute: paper?.institute ?? ''
-				}
-			: null
-	);
+	const cartItem = $derived(currentQ ? questionCartSnapshot(paper, currentQ) : null);
 
 	const editHref = $derived(
 		currentQ

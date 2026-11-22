@@ -11,6 +11,8 @@ import {
 	createCart,
 	addItem as _add,
 	removeItem as _remove,
+	removePaper as _removePaper,
+	togglePaper as _togglePaper,
 	validateStore,
 	toCartItem
 } from './cartModel.js';
@@ -204,6 +206,24 @@ export const carts = {
 			return r.cart;
 		});
 		return done;
+	},
+	togglePaper(paperId, questions) {
+		let result = { action: 'unavailable', count: 0 };
+		patchActive((cart) => {
+			const r = _togglePaper(cart, paperId, questions);
+			result = { action: r.action, count: r.count };
+			return r.cart;
+		});
+		return result;
+	},
+	removePaper(paperId) {
+		let count = 0;
+		patchActive((cart) => {
+			const r = _removePaper(cart, paperId);
+			count = r.count;
+			return r.cart;
+		});
+		return count;
 	},
 	has(paperId, number) {
 		let found = false;
