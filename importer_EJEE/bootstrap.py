@@ -17,7 +17,7 @@ def activate(run_dir):
     from dotenv import dotenv_values
     # The existing Meta credential is reused in memory, never copied or logged.
     settings = dotenv_values(ROOT.parent / '.env')
-    if not os.environ.get('META_API_KEY') and settings.get('META_API_KEY'):
+    if 'META_API_KEY' not in os.environ and settings.get('META_API_KEY'):
         os.environ['META_API_KEY'] = settings['META_API_KEY']
     os.environ['PHYSICS_ARCHIVE_DB'] = str(run / 'paperlab.db')
     os.environ['PHYSICS_OUTPUT_BASE'] = str(run / 'Outputs')

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -83,9 +84,9 @@ def test_merge_copies_everything_with_new_ids(staged_run):
     rundir, cfg = staged_run
     receipt = merge(cfg, rundir)
     target = Path(cfg['merge_target_db'])
-    assert (receipt['paper_id'], receipt['questions']) == (1, 2)
-    assert (receipt['topic_links'], receipt['usage_rows']) == (2, 1)
-    assert receipt['backup'] is None  # fresh target: nothing to back up
+    paper = receipt['papers'][0]
+    assert (paper['archive_paper'], paper['questions']) == (1, 2)
+    assert receipt['backup'] is not None and Path(receipt['backup']).is_file()
     with database.get_connection(str(target)) as c:
         papers = c.execute('SELECT * FROM papers').fetchall()
         assert len(papers) == 1 and papers[0]['paper_name'] == 'M ch1'
@@ -104,7 +105,12 @@ def test_merge_copies_everything_with_new_ids(staged_run):
     assert str(rundir) not in papers[0]['question_pdf_path']
     saved = json.loads((rundir / 'manifest.json').read_text(encoding='utf-8'))
     assert saved['merged']['paper_id'] == 1
+    assert saved['merged']['bundle'].endswith('.plbundle')
     assert (rundir / 'merge.json').is_file()
+    bundle_files = list(rundir.glob('*.plbundle'))
+    assert bundle_files and zipfile.ZipFile(bundle_files[0]).namelist().count('bundle.json') == 1
+    import paperlab_bundle
+    assert paperlab_bundle.inspect_bundle(str(bundle_files[0]))['ok']
 
 
 def test_merge_refuses_second_run_into_same_target(staged_run, tmp_path):
@@ -115,7 +121,7 @@ def test_merge_refuses_second_run_into_same_target(staged_run, tmp_path):
     # The same run may still merge into a DIFFERENT archive.
     other = tmp_path / 'archive2' / 'other.db'
     receipt = merge(dict(cfg, merge_target_db=str(other)), rundir)
-    assert receipt['paper_id'] == 1
+    assert receipt['papers'][0]['archive_paper'] == 1
 
 
 def test_merge_refuses_duplicate_pdf_hash(staged_run):
@@ -126,7 +132,7 @@ def test_merge_refuses_duplicate_pdf_hash(staged_run):
     manifest = json.loads((twin / 'manifest.json').read_text(encoding='utf-8'))
     manifest.pop('merged', None)
     (twin / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
-    with pytest.raises(ValueError, match='already holds this PDF pair'):
+    with pytest.raises(ValueError, match="target already has 'M ch1'"):
         merge(dict(cfg), twin)
 
 

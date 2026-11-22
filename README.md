@@ -197,15 +197,23 @@ Physics-section structures of JEE Advanced 2014–2026 (2014 Paper 1 corrected
 to 10 single-correct); paragraph targets count groups. Model papers and cart
 selections stay in the current browser.
 
-## Textbook imports (EJEE)
+## Import books and papers
 
-Bulk textbook chapters go through a two-step flow documented in
-[`importer_EJEE/README.md`](importer_EJEE/README.md): **step 1** stages the
-chapter into an isolated temp database (`runs/<name>/`, browsable without
-touching the archive), **step 2** (`merge` phase) promotes the verified run
-into this repo's `physics_archive.db` with fresh ids, a pre-merge backup,
-and duplicate/idempotency guards. Keep imports staged until verified; merge
-only what you intend to publish.
+| Source | Start here |
+|---|---|
+| EJEE database and uploads | [EJEE importer](importer_EJEE/README.md): plan books into **15-question parts**, stage, review, and export. See the [13 live pilots and cost tables](importer_EJEE/EJEE_SOURCES.md), [pilot handoff](importer_EJEE/STATUS.md), and [upstream findings](importer_EJEE/suggestions.md). |
+| Other textbook, worksheet, or paper | [Custom importer](custom_importer/README.md) for manual or agent-assisted transcription; send agents the [transcription skill](custom_importer/SKILL.md). |
+| A portable `.plbundle` already exported | [PaperLab bundle guide](paperlab_bundle/README.md): inspect, dry-run, and merge into an explicitly selected archive. |
+
+Both importers stage away from the archive and export the same bundle format.
+Review before publishing. Archive merges take a SQLite backup, reject
+duplicates, and preserve provenance. The operator performs the merge; there
+is no bulk conversion, paid model call, or archive write just from installing
+these tools.
+
+Windows note: if organizational Application Control blocks a native Python
+dependency such as `ormsgpack`, use an approved Python environment or run the
+importer on macOS/Linux. Do not disable organizational policy.
 
 Search and reading are open to everyone; uploads, tagging, topics, ledger,
 and figure management need the archivist login.

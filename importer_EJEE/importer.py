@@ -1,6 +1,6 @@
 """EJEE chapter import: read-only source -> mapped image PDFs -> Node 2 -> Node 3.
 
-Usage: python importer.py inspect|prepare|extract|classify|verify --config demo.json
+Usage: python importer.py <phase> --config runs/books/<book>/part-NNN.json   (see README.md)
    Step 1 (staging): prepare..verify write only the run's temp DB.
    Step 2 (merge):  python importer.py merge --config run.json --target-db /path/to/physics_archive.db
 """
@@ -11,10 +11,8 @@ from collections import defaultdict
 import hashlib
 import io
 import json
-import os
 from pathlib import Path
 import re
-import shutil
 import sqlite3
 import subprocess
 import time
@@ -48,8 +46,11 @@ def source_connect(path):
 
 def load_config(path):
     path = Path(path).resolve()
-    cfg = json.loads(path.read_text(encoding='utf-8'))
-    for key in ('source_db', 'asset_root', 'original_pdf'):
+    cfg = json.loads(path.read_text(encoding='utf-8-sig'))  # tolerate BOM (Notepad/PowerShell)
+    # EJEE prepare() always creates raster body canvases. Native PDF cropping
+    # remains an explicit compatibility option, not the raster default.
+    cfg.setdefault('raster_exact_crop', True)
+    for key in ('source_db', 'asset_root', 'original_pdf', 'book_plan'):
         if cfg.get(key) and not Path(cfg[key]).is_absolute():
             cfg[key] = str((path.parent / cfg[key]).resolve())
     run = (ROOT / cfg['run_dir'])
@@ -194,11 +195,50 @@ def resolve_merges(cfg, selected):
     return {str(k): list(v) for k, v in merges.items()}
 
 
+def enrich_items(c, items):
+    """Attach crops, transcripts and node ancestry (provenance only)."""
+    nodes = {r['id']: dict(r) for r in c.execute('SELECT * FROM nodes')}
+    for item in items:
+        rid = [r['id'] for r in item['question_rows'] + item['solution_rows']]
+        placeholders = ','.join('?' for _ in rid)
+        item['resource_crops'] = [dict(r) for r in c.execute(f'SELECT * FROM resource_crops WHERE resource_id IN ({placeholders})', rid)]
+        item['resource_transcripts'] = [dict(r) for r in c.execute(f'SELECT * FROM resource_transcripts WHERE resource_id IN ({placeholders})', rid)]
+        ancestry = {}
+        for r in item['question_rows'] + item['solution_rows']:
+            lineage, n, seen = [], r['topic_id'], set()
+            while n in nodes and n not in seen:
+                seen.add(n); lineage.append(nodes[n]); n = nodes[n]['parent_id']
+            ancestry[str(r['id'])] = lineage
+        item['original_ancestry'] = ancestry
+    return items
+
+
+def book_plan_path(cfg):
+    import book_plan
+    return Path(cfg.get('book_plan') or ROOT / 'runs' / 'books' / book_plan.slug(cfg['book_source']) / 'plan.json')
+
+
+def book_part_items(cfg):
+    """Book mode: one frozen plan per source, ~part_size questions per paper."""
+    import book_plan
+    plan_path = book_plan_path(cfg)
+    if not plan_path.is_file():
+        raise ValueError(f'No frozen plan at {plan_path}; run: importer.py plan --config <cfg>')
+    plan = json.loads(plan_path.read_text(encoding='utf-8'))
+    if plan.get('schema') != book_plan.PLAN_SCHEMA or plan['source'] != cfg['book_source']:
+        raise ValueError('Plan schema/source mismatch')
+    part = int(cfg['part'])
+    with source_connect(cfg['source_db']) as c:
+        items = enrich_items(c, book_plan.part_items(c, plan, part))
+    return items, f'{cfg["book_source"]} — Part {part}', plan_path
+
+
 def prepare(cfg, run):
-    import fitz
-    import database
     if (run / 'manifest.json').exists():
         raise ValueError('Run already prepared; use extract/classify to resume, or choose a new run_dir')
+    if cfg.get('part') is not None:
+        items, paper_name, plan_path = book_part_items(cfg)
+        return materialize(cfg, run, items, paper_name, {'book_plan': str(plan_path), 'part': int(cfg['part'])})
     try:
         pattern = re.compile(cfg['group_pattern'])
     except re.error as exc:
@@ -267,6 +307,13 @@ def prepare(cfg, run):
                           'question_rows': qrows, 'solution_rows': srows, 'original_ancestry': ancestry,
                           'resource_crops': crops, 'resource_transcripts': transcripts,
                           'question_pages': [], 'solution_pages': []})
+    return materialize(cfg, run, items,
+                       f'{cfg["book_source"]} — Chapter {cfg["chapter"]}: {cfg["chapter_title"]}', {})
+
+
+def materialize(cfg, run, items, paper_name, extra):
+    import fitz
+    import database
     run.mkdir(parents=True, exist_ok=True)
     assets = run / 'sources'; assets.mkdir(exist_ok=True)
     qpdf, spdf = fitz.open(), fitz.open()
@@ -288,12 +335,12 @@ def prepare(cfg, run):
     pid = database.register_paper(str(qpath), str(spath) if ns else None)
     with database.get_connection() as c:
         c.execute('UPDATE papers SET paper_name=?,exam_type=?,source_institute=?,q_start=1,q_end=?,s_start=?,s_end=?,status=? WHERE id=?',
-                  (f'{cfg["book_source"]} — Chapter {cfg["chapter"]}: {cfg["chapter_title"]}', 'Textbook', cfg['book_source'], nq, 1 if ns else None, ns or None, 'uploaded', pid))
+                  (paper_name, 'Textbook', cfg['book_source'], nq, 1 if ns else None, ns or None, 'uploaded', pid))
     commit = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip()
     manifest = {'schema': 'ejee-paperlab-import/1', 'paper_id': pid, 'config': cfg,
                 'upstream_commit': commit, 'question_pdf': str(qpath), 'solution_pdf': str(spath) if ns else None,
                 'question_pdf_sha256': sha(qpath), 'solution_pdf_sha256': sha(spath) if ns else None,
-                'items': items}
+                'paper_name': paper_name, **extra, 'items': items}
     dump(run / 'manifest.json', manifest)
     dump(run / 'progress.json', {'questions': {}, 'node3': {}})
     print(f'Prepared paper {pid}: {len(items)} questions, {nq} question pages, {ns} solution pages.', flush=True)
@@ -377,6 +424,52 @@ def strip_solution_heading(text, heading):
     return text
 
 
+_DISPLAY = re.compile(r'\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\begin\{(equation|align)\*?\}[\s\S]+?\\end\{\1\*?\}')
+
+
+def _eqno_braced(tex):
+    r"""Plain-TeX ``\eqno{X}`` -> ``\tag*{X}`` inside display math, printed text outside.
+
+    KaTeX (the app's renderer) has no \eqno, so it shows as a red error.
+    \tag* keeps the printed label exactly as written ("(1)", "...(3)"),
+    without adding parentheses. A \eqno the model put after prose (outside
+    any display) cannot carry a tag, so its label stays as plain text.
+    """
+    def braced(s, start):
+        # index just past the group opened at s[start] == '{', or None
+        depth = 0
+        for i in range(start, len(s)):
+            depth += {'{': 1, '}': -1}.get(s[i], 0)
+            if depth == 0:
+                return i + 1
+        return None
+
+    def rewrite(s, in_display):
+        out, i = [], 0
+        for m in re.finditer(r'\\eqno\s*(?=\{)', s):
+            if m.start() < i:
+                continue
+            end = braced(s, m.end())
+            if end is None:
+                continue
+            label = s[m.end() + 1:end - 1].strip()
+            plain = re.fullmatch(r'\\text\{([^{}]*)\}', label)
+            label = plain.group(1) if plain else label
+            out.append(s[i:m.start()])
+            out.append(r'\tag*{' + label + '}' if in_display else label)
+            i = end
+        out.append(s[i:])
+        return ''.join(out)
+
+    pieces, last = [], 0
+    for m in _DISPLAY.finditer(tex):
+        pieces.append(rewrite(tex[last:m.start()], False))
+        pieces.append(rewrite(m.group(0), True))
+        last = m.end()
+    pieces.append(rewrite(tex[last:], False))
+    return ''.join(pieces)
+
+
 def normalize_rendering(tex, number=None):
     """Keep valid TeX while targeting the unchanged PaperLab/KaTeX bridge.
 
@@ -387,6 +480,7 @@ def normalize_rendering(tex, number=None):
     patterns are touched -- equation tags like (1.22) are never rewritten.
     """
     tex = re.sub(r'\\eqno\s*\(([^)\n]+)\)', lambda m: r'\tag{' + m[1] + '}', tex)
+    tex = _eqno_braced(tex)
     # Tagged displays must be equation environments: \tag inside $$...$$
     # is rejected by real LaTeX (the compiled-image fallback fails) even
     # though the KaTeX bridge tolerates it. Single-tag displays only;
@@ -444,8 +538,18 @@ def normalize_rendering(tex, number=None):
             lines[0] = re.sub(r'^(\\textbf\{Answer:\s*)[^)]*?(?=\))',
                                r'\g<1>' + str(number), lines[0], count=1)
             tex = '\n'.join(lines)
-        tex = re.sub(r'(\\underline\{\\textbf\{Solution for )[^}]*(?=\}\})',
-                     r'\g<1>' + str(number), tex)
+        # Solution-for heading shape drift (BIIT key-only cards): normalize ONLY
+        # the heading shape+label to canonical
+        # '\underline{\textbf{Solution for <number>}}', word for word
+        # otherwise. Observed variants: missing \textbf
+        # ('\underline{Solution for 5}'), hyphen ('Solution-for 5'),
+        # Q-prefix ('Solution for Q.10'). Answer key lines untouched beyond
+        # the label rewrite above; headings with extra trailing text inside
+        # the braces are left for human review.
+        def _canon_solution_for(m):
+            return r'\underline{\textbf{Solution for ' + str(number) + '}}'
+        tex = re.sub(r'\\underline\{(?:\\textbf\{)?Solution(?:-| )for\s+(?:Q\.?\s*)?\d+\s*\}\}?',
+                     _canon_solution_for, tex)
     # Answer-line repair (idempotent): math/commands must live OUTSIDE the
     # \textbf{Answer: ...} braces. tex_to_markdown pairs $...$ before it
     # converts \textbf, so math inside the braces orphans a "{" in the
@@ -476,7 +580,42 @@ def normalize_rendering(tex, number=None):
     return re.sub(r'\\begin\{verbatim\}\s*\n?(.*?)\\end\{verbatim\}', program, tex, flags=re.DOTALL)
 
 
-def validate_item(pid, number, has_solution):
+def figure_edge_errors(pid, number, frozen=()):
+    """Raster mode: block completion only where a crop edge CUTS content.
+
+    An edge is a defect when ink touches it AND continues just outside the box
+    in the source (a cut label/curve, or intruding text/figure). Edges that are
+    merely tight, or lie on the source border, do not block. Figures frozen for
+    human review are skipped. Returns (messages, names_with_defects).
+    """
+    import directory_manager
+    from PIL import Image
+    from crop_quality import edge_diagnosis
+    folder = directory_manager.get_question_dir(pid, number) / 'figures'
+    sidecar = folder / '_raster_boxes.json'
+    boxes = json.loads(sidecar.read_text(encoding='utf-8')) if sidecar.exists() else {}
+    errors, names = [], []
+    for path in sorted(folder.glob('[qs]fig*.png')):
+        frame = boxes.get(path.name)
+        if path.name in frozen or frame is None:
+            continue
+        with Image.open(frame['body_png']) as source:
+            cut = [e for e, state in edge_diagnosis(source.convert('RGB'), frame['box']).items()
+                   if state == 'ink continues outside']
+        if cut:
+            names.append(path.name)
+            errors.append(f'{path.name}: its {"/".join(cut)} edge(s) cut through content that continues '
+                          'outside the box. Recrop with the same filename: EXPAND past a cut label/curve '
+                          'of this diagram, or move INWARD into the blank gap if it is neighbouring text '
+                          'or another figure.')
+    return errors, names
+
+
+def item_has_key(item):
+    return any(r.get('answer') for r in item['question_rows'])
+
+
+def validate_item(pid, number, has_solution, has_key=False):
     import directory_manager
     qdir = directory_manager.get_question_dir(pid, number)
     errors = []
@@ -487,6 +626,8 @@ def validate_item(pid, number, has_solution):
             errors.append(f'{side}.tex missing'); continue
         text = path.read_text(encoding='utf-8')
         if '[UNREADABLE]' in text: errors.append(f'{side}: unreadable content requires review')
+        if side == 'solution' and has_key and not has_solution and not text.startswith('\\textbf{Answer:'):
+            errors.append('source supplies an answer key: solution must open with the \\textbf{Answer:} key line')
         if side == 'solution' and has_solution:
             first = text.split('\n', 1)[0]
             if not first.startswith('\\textbf{Answer:'):
@@ -502,14 +643,28 @@ def validate_item(pid, number, has_solution):
                     errors.append(f'Answer sub-label {m.group(1).strip()!r} outside {number}')
             elif m and m.group(1).strip() != str(number):
                 errors.append(f'Answer label {m.group(1).strip()!r} != local question_number {number!r}')
-            for sm in re.finditer(r'\\underline\{\\textbf\{Solution for ([^}]*)\}\}', text):
+            for sm in re.finditer(r'\\underline\{(?:\\textbf\{)?Solution(?:-| )for\s+([^}]*?)\}?\}', text):
                 if prange is not None:
                     if not (sm.group(1).strip().isdigit()
                              and prange[0] <= int(sm.group(1).strip()) <= prange[1]):
                         errors.append(f'Solution-for sub-label {sm.group(1).strip()!r} outside {number}')
                 elif sm.group(1).strip() != str(number):
                     errors.append(f'Solution-for {sm.group(1).strip()!r} != local question_number {number!r}')
-        if re.search(r'\$\$[^\$]*?\\tag\{', text):
+        if side == 'solution' and has_key and not has_solution:
+            # Key-only solutions legitimately omit the heading; but a PRESENT
+            # heading with a wrong label must fail loudly, never pass silently.
+            prange = paragraph_range(number)
+            for sm in re.finditer(r'\\underline\{(?:\\textbf\{)?Solution(?:-| )for\s+([^}]*?)\}?\}', text):
+                if prange is not None:
+                    if not (sm.group(1).strip().isdigit()
+                             and prange[0] <= int(sm.group(1).strip()) <= prange[1]):
+                        errors.append(f'Solution-for sub-label {sm.group(1).strip()!r} outside {number}')
+                elif sm.group(1).strip() != str(number):
+                    errors.append(f'Solution-for {sm.group(1).strip()!r} != local question_number {number!r}')
+
+        if '\\eqno' in text:
+            errors.append(f'{side}: \\eqno is not rendered by the app (shows as an error); use \\tag in an equation environment')
+        if any('\\tag' in m.group(1) for m in re.finditer(r'\$\$([\s\S]+?)\$\$', text)):
             errors.append(f'{side}: \\tag inside $$...$$ breaks the compiled-image fallback; use an equation environment')
         if side == 'question' and re.search(r'which one is it|which of the following', text, re.IGNORECASE) \
                 and '\\begin{enumerate}' not in text:
@@ -539,38 +694,132 @@ def extract_item(manifest, item, cfg, run):
     # Keep its crop algorithms but do not save a 600 dpi upsample of the pixels.
     tools._SAVE_DPI = 200
     selected = [tools.get_page_image, tools.assisted_crop, tools.exact_crop, tools.submit_question, tools.submit_solution]
+    if cfg.get('raster_exact_crop', False):
+        from raster_crop import make_exact_crop, make_page_image
+        selected[2] = make_exact_crop(manifest, tools)
+        selected[0] = make_page_image(manifest, tools, run)
+    paired = cfg.get('paired_submit', cfg.get('raster_exact_crop', False))
+    if paired:
+        from cost_controls import make_submit_pair
+        selected = selected[:3] + [make_submit_pair()]
+    from extraction_contract import bind_descriptions, build_prompt
+    selected = bind_descriptions(selected, cfg)
     by_name = {t.name: t for t in selected}
-    native = (REPO / 'prompts' / 'extractor_prompt.md').read_text(encoding='utf-8')
-    override = (ROOT / 'prompts' / 'mapped_extractor.md').read_text(encoding='utf-8')
+    prompt = build_prompt(cfg)
     allowed = {manifest['question_pdf']: item['question_pages']}
     if manifest['solution_pdf']: allowed[manifest['solution_pdf']] = item['solution_pages']
     metadata = {'paper_id': pid, 'question_number': number, 'source_label': item['question_rows'][0]['title'],
-                'source_groups': item.get('groups', [item['group']]),
+                'source_groups': item.get('groups', [item['group']]) if item.get('merged') else [item['group']],
+                'split_problem': item.get('kind') == 'merged',
                 'allowed_pages': allowed, 'has_mapped_solution': bool(item['solution_rows']),
                 'source_answers': [r['answer'] for r in item['question_rows'] if r['answer']],
                 'source_question_text': [r['question'] for r in item['question_rows'] if r['question']],
                 'source_solution_text': [r['solution'] for r in item['question_rows'] if r['solution']],
-                'source_qtype': [r['qtype'] for r in item['question_rows'] if r['qtype']]}
-    metadata['reviewed_diagrams'] = reuse_reviewed(cfg, item, pid, number)
-    messages = [SystemMessage(content=native + '\n\n' + override), HumanMessage(content=json.dumps(metadata, ensure_ascii=False))]
+                 'source_qtype': [r['qtype'] for r in item['question_rows'] if r['qtype']]}
+    from extraction_contract import page_geometry
+    metadata['page_geometry'] = page_geometry(manifest, item)
+    metadata['reviewed_diagrams'] = reuse_reviewed(cfg, item, pid, number, run)
+    messages = [SystemMessage(content=prompt), HumanMessage(content=json.dumps(metadata, ensure_ascii=False))]
     # Existing resource mapping supplies the images immediately; no searching/indexing calls.
     for side in ['question', 'solution']:
         for row, page in zip(item[f'{side}_rows'], item[f'{side}_pages']):
             messages.append(HumanMessage(content=[{'type': 'text', 'text': f'{side.upper()} page {page}, resource {row["id"]}; already body-cropped, no key-sheet assumption.'},
                                                     tools.img_block(row['asset_evidence']['body_png'], tools.PAGE_PX)]))
-    llm = get_llm().bind_tools(selected, parallel_tool_calls=False)
+    # Raster mode: independent figures may be cropped in the same turn (each
+    # call is still budgeted and executed in order); 20-turn ceiling unchanged.
+    llm = get_llm().bind_tools(selected, parallel_tool_calls=bool(cfg.get('parallel_crops', cfg.get('raster_exact_crop', False))))
     saved = set(); t0 = time.time()
+    from crop_budget import CropBudget, CropBudgetExceeded
+    crop_budget = CropBudget(cfg.get('max_crop_calls_per_figure', 8))
     log = run / 'traces' / f'{number}.json'
-    for turn in range(cfg.get('max_turns_per_question', 36)):
+    from submission_guard import normalize_figure_references, guard_saved_submission
+    from cost_controls import prune_previews
+
+    def save(kind, latex, qtype=None):
+        # Same heading strip, rendering normalization, native validator/saver
+        # and post-save guard as the separate submit tools.
+        name = 'submit_question' if kind == 'question' else 'submit_solution'
+        strip = strip_problem_heading if kind == 'question' else strip_solution_heading
+        latex = normalize_figure_references(normalize_rendering(strip(latex, source_heading(item)), number))
+        native_args = {'paper_id': pid, 'question_number': number, 'latex_content': latex}
+        if kind == 'question':
+            native_args['qtype'] = qtype or 'unknown'
+        result = str(getattr(tools, name).invoke(native_args))
+        if result == 'saved':
+            guard_saved_submission(pid, number, kind, latex)
+            saved.add(name)
+        return result
+
+    frozen, gate_rounds = set(), 0
+    review_file = run / 'review_required' / f'{number}.json'
+    if review_file.exists():
+        # A retry starts a fresh attempt: archive the old record (not read by
+        # verify) so stale holds from a failed attempt don't linger.
+        review_file.rename(review_file.with_name(f'{number}.attempt-{int(time.time())}.bak'))
+
+    def hold_for_review(filename, reason):
+        # The figure is kept as-is but BLOCKS verify/merge until a human
+        # approves it; the transcription is not thrown away.
+        frozen.add(filename)
+        record = json.loads(review_file.read_text(encoding='utf-8')) if review_file.exists() else {
+            'question': number, 'approved': False, 'figures': {}}
+        record.setdefault('figures', {})[filename] = reason
+        record['reason'] = '; '.join(record.get('unreadable', []) + [f'{k}: {v}' for k, v in record['figures'].items()])
+        dump(review_file, record)
+
+    max_turns = cfg.get('max_turns_per_question', 20)
+    reserve = cfg.get('submit_reserve_turns', 4)
+    closing_sent = False
+    for turn in range(max_turns):
+        if turn >= max_turns - reserve and len(saved) < 2 and not closing_sent:
+            closing_sent = True
+            # Never lose a transcription to figure polishing: the last turns
+            # are reserved for saving; current crops are held for review.
+            messages.append(HumanMessage(content=(
+                'Turn budget nearly used. Cropping is now closed: every figure keeps its current '
+                'crop and is held for human review. Call submit_pair NOW with the complete '
+                'question and solution, referencing the figures you already saved.')))
+        if cfg.get('prune_previews', False):
+            # Off by default: editing earlier messages breaks the provider's
+            # prompt cache, so the whole tail is re-billed at full price.
+            # Kept old previews are cached (~2% of input price) instead.
+            prune_previews(messages)
         response = invoke_with_retry(llm, messages)
         usage = response.usage_metadata or {}
         database.log_token_usage(pid, 'extractor', input_tokens=usage.get('input_tokens', 0),
                                  cache_read=(usage.get('input_token_details') or {}).get('cache_read', 0),
                                  output_tokens=usage.get('output_tokens', 0),
                                  reasoning_tokens=(usage.get('output_token_details') or {}).get('reasoning', 0))
+        if not response.tool_calls and isinstance(response.content, str):
+            from cost_controls import recover_text_tool_calls
+            from langchain_core.messages import AIMessage
+            recovered = recover_text_tool_calls(response.content, set(by_name))
+            if recovered:
+                # Provider emitted the call as text: replay it as a normal
+                # structured call through the same validators (logged).
+                response = AIMessage(content='[recovered text-form tool call]', tool_calls=[
+                    {'name': c['name'], 'args': c['args'], 'id': f'recovered-{turn}-{i}', 'type': 'tool_call'}
+                    for i, c in enumerate(recovered)], usage_metadata=response.usage_metadata)
         messages.append(response)
         for call in response.tool_calls or []:
             args = dict(call['args']); name = call['name']
+            if name in ('assisted_crop', 'exact_crop') and turn >= max_turns - reserve:
+                hold_for_review(args.get('output_filename', '?'), 'cropping closed: turn budget reserved for saving')
+                messages.append(ToolMessage(
+                    content='Cropping is closed (turn budget reserved for saving). The current crop is held '
+                            'for human review. Call submit_pair now.', tool_call_id=call['id']))
+                continue
+            if name in ('assisted_crop', 'exact_crop'):
+                try:
+                    crop_budget.check(args)
+                except CropBudgetExceeded as exc:
+                    hold_for_review(args.get('output_filename', '?'), f'crop limit reached: {exc}')
+                    messages.append(ToolMessage(
+                        content=f'Crop limit reached for {args.get("output_filename")}: it is now FROZEN '
+                                'and held for human review. Do not crop it again. Keep it referenced and '
+                                'finish the transcription with submit_pair.',
+                        tool_call_id=call['id']))
+                    continue
             try:
                 if name not in by_name: raise ValueError('Tool not allowed')
                 if name == 'submit_question':
@@ -579,6 +828,8 @@ def extract_item(manifest, item, cfg, run):
                     args['latex_content'] = strip_solution_heading(args['latex_content'], source_heading(item))
                 if name in ('submit_question', 'submit_solution'):
                     args['latex_content'] = normalize_rendering(args['latex_content'], number)
+                    from submission_guard import normalize_figure_references
+                    args['latex_content'] = normalize_figure_references(args['latex_content'])
                 if 'paper_id' in args and args['paper_id'] != pid: raise ValueError('Wrong paper ID')
                 if 'question_number' in args and str(args['question_number']) != number: raise ValueError('Wrong question number')
                 if 'pdf_path' in args:
@@ -588,10 +839,19 @@ def extract_item(manifest, item, cfg, run):
                     prefix = 'qfig' if args['pdf_path'] == manifest['question_pdf'] else 'sfig'
                     if not re.fullmatch(prefix + r'\d+\.png', args.get('output_filename', '')):
                         raise ValueError('Use the correct side and stable qfigN.png/sfigN.png filename')
-                if name in ('get_page_image', 'assisted_crop', 'exact_crop'):
+                if name == 'submit_pair':
+                    q = save('question', args['question_latex'], args.get('qtype'))
+                    s_res = save('solution', args['solution_latex']) if q == 'saved' else 'not attempted (question not saved)'
+                    result = f'question: {q}\nsolution: {s_res}'
+                elif name in ('get_page_image', 'assisted_crop', 'exact_crop'):
                     result = by_name[name].invoke({'name': name, 'args': args, 'id': call['id'], 'type': 'tool_call'})
                 else:
                     result = by_name[name].invoke(args)
+                    if name in ('submit_question', 'submit_solution') and str(result) == 'saved':
+                        from submission_guard import guard_saved_submission
+                        guard_saved_submission(pid, number,
+                                               'question' if name == 'submit_question' else 'solution',
+                                               args['latex_content'])
                 if isinstance(result, Command): messages.extend(result.update.get('messages', []))
                 else:
                     messages.append(ToolMessage(content=str(result), tool_call_id=call['id']))
@@ -600,11 +860,47 @@ def extract_item(manifest, item, cfg, run):
                 messages.append(ToolMessage(content=f'Error: {type(exc).__name__}: {exc}', tool_call_id=call['id']))
         dump(log, {'turns': turn+1, 'elapsed_sec': time.time()-t0, 'messages': [clean_message(m) for m in messages]})
         if len(saved) == 2:
-            errors = validate_item(pid, number, bool(item['solution_rows']))
-            if not errors: return {'ok': True, 'turns': turn+1, 'elapsed_sec': round(time.time()-t0, 2)}
-            messages.append(HumanMessage(content='Completion check failed; correct with same IDs: ' + '; '.join(errors)))
+            errors = validate_item(pid, number, bool(item['solution_rows']), item_has_key(item))
+            # [UNREADABLE] is the REQUIRED answer to illegible source: the model
+            # cannot fix it, so hold the question for a human (verify still
+            # blocks merge) instead of looping on it.
+            unreadable = [e for e in errors if 'unreadable content requires review' in e]
+            if unreadable:
+                errors = [e for e in errors if e not in unreadable]
+                record = json.loads(review_file.read_text(encoding='utf-8')) if review_file.exists() else {
+                    'question': number, 'approved': False, 'figures': {}}
+                record['unreadable'] = unreadable
+                record['reason'] = '; '.join(unreadable + [f'{k}: {v}' for k, v in record.get('figures', {}).items()])
+                dump(review_file, record)
+            edge_msgs, edge_names = (figure_edge_errors(pid, number, frozen)
+                                     if cfg.get('raster_exact_crop', False) else ([], []))
+            max_rounds = cfg.get('max_edge_gate_rounds', 2)
+            if not errors and (not edge_msgs or gate_rounds >= max_rounds or turn >= max_turns - reserve):
+                for name in edge_names:
+                    hold_for_review(name, f'edge still cuts content after {gate_rounds} correction round(s)')
+                import directory_manager
+                qtext = (directory_manager.get_question_dir(pid, number) / 'question.tex').read_text(encoding='utf-8').lstrip()
+                if re.match(r'[a-z]', qtext):
+                    # A faithful transcription of a card that begins mid-sentence:
+                    # the opening is missing from the SOURCE. Keep it, but a human
+                    # must confirm (verify blocks merge until approved).
+                    record = json.loads(review_file.read_text(encoding='utf-8')) if review_file.exists() else {
+                        'question': number, 'approved': False, 'figures': {}}
+                    record['source_note'] = 'question starts mid-sentence: the source card may be missing its opening'
+                    record['reason'] = '; '.join(filter(None, [record.get('reason'), record['source_note']]))
+                    dump(review_file, record)
+                return {'ok': True, 'turns': turn+1, 'elapsed_sec': round(time.time()-t0, 2),
+                        'figures_held_for_review': sorted(frozen)}
+            if not errors:
+                gate_rounds += 1
+            messages.append(HumanMessage(content='Completion check failed; correct with same IDs: '
+                                         + '; '.join(errors + edge_msgs)))
         elif not response.tool_calls:
-            messages.append(HumanMessage(content='Finish this mapped item by calling both submit_question and submit_solution. Do not invent missing solutions.'))
+            messages.append(HumanMessage(content=(
+                'Finish this mapped item with one submit_pair call (question_latex and solution_latex).'
+                if paired else
+                'Finish this mapped item by calling both submit_question and submit_solution.')
+                + ' Do not invent missing solutions.'))
     raise RuntimeError(f'{number}: turn limit reached; trace saved for review')
 
 
@@ -616,18 +912,23 @@ def extract(cfg, run):
     database.set_paper_status(pid, 'extracting')
     for item in manifest['items']:
         number = item['number']
-        if progress['questions'].get(number, {}).get('ok') and not validate_item(pid, number, bool(item['solution_rows'])):
+        if progress['questions'].get(number, {}).get('ok') and not validate_item(pid, number, bool(item['solution_rows']), item_has_key(item)):
             continue
         print(f'Extracting {number} ({len(item["solution_rows"])} solution parts)', flush=True)
         try:
             progress['questions'][number] = extract_item(manifest, item, cfg, run)
         except Exception as exc:
+            # One hard question must not block the rest of the part: record
+            # it (trace + review record already saved) and continue.
             progress['questions'][number] = {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}
-            database.set_paper_status(pid, 'failed', progress['questions'][number]['error'], time.time()-t0)
-            dump(run / 'progress.json', progress)
-            raise
         dump(run / 'progress.json', progress)
         print(f'{number}: {progress["questions"][number]}', flush=True)
+    failed = [n for n, r in progress['questions'].items() if not r.get('ok')]
+    if failed:
+        database.set_paper_status(pid, 'failed', f'{len(failed)} question(s) need review: {failed}', time.time()-t0)
+        print(f'Extraction finished with {len(failed)} question(s) needing review: {failed}. '
+              'Re-run extract to retry only those.', flush=True)
+        raise SystemExit(2)
     elapsed = sum(r.get('elapsed_sec', 0) for r in progress['questions'].values())
     database.set_paper_status(pid, 'done', elapsed_sec=elapsed)
     database.mark_paper_archived(pid)
@@ -639,8 +940,13 @@ def valid_classification(report):
     return bool(report.get('difficulty') and (report.get('codes') or report.get('suggestion')) and not report.get('errors'))
 
 
-def reviewed_crops(cfg):
-    return json.loads((ROOT / cfg['reviewed_crops']).read_text(encoding='utf-8')) if cfg.get('reviewed_crops') else []
+def reviewed_crops(cfg, run=None):
+    """Human-reviewed rectangles: the config's shared file plus this run's repairs."""
+    crops = json.loads((ROOT / cfg['reviewed_crops']).read_text(encoding='utf-8')) if cfg.get('reviewed_crops') else []
+    local = Path(run) / 'reviewed_crops.json' if run else None
+    if local and local.is_file():
+        crops = json.loads(local.read_text(encoding='utf-8')) + crops  # run repairs take precedence
+    return crops
 
 
 def node3_inputs_hash() -> dict:
@@ -666,12 +972,12 @@ def node3_inputs_hash() -> dict:
     return meta
 
 
-def reuse_reviewed(cfg, item, pid, number):
+def reuse_reviewed(cfg, item, pid, number, run=None):
     """Reuse only reviewed isolated rectangles whose source pixel hash still matches."""
     from PIL import Image
     import directory_manager
     reused = []
-    for crop in reviewed_crops(cfg):
+    for crop in reviewed_crops(cfg, run):
         if crop['group'] not in item.get('groups', [item['group']]): continue
         for side in ('question', 'solution'):
             if not crop['filename'].startswith('qfig' if side == 'question' else 'sfig'): continue
@@ -707,9 +1013,12 @@ def classify(cfg, run):
               f'discarding {len(progress.get("node3", {}))} cached classification(s).', flush=True)
         progress['node3'] = {}
     progress['node3_meta'] = meta
+    skipped, failed = [], []
     for item in manifest['items']:
         number = item['number']
-        if not progress['questions'].get(number, {}).get('ok'): raise ValueError('Extraction must finish first')
+        if not progress['questions'].get(number, {}).get('ok'):
+            skipped.append(number)  # extraction under review; classify the rest
+            continue
         previous = progress['node3'].get(number, {})
         if valid_classification(previous):
             previous['ok'] = True
@@ -720,8 +1029,13 @@ def classify(cfg, run):
         progress['node3'][number] = report
         dump(run / 'progress.json', progress)
         print(f'Node 3 {number}: {report}', flush=True)
-        if not report['ok']: raise RuntimeError('Node 3 output incomplete; retry classify after inspection')
+        if not report['ok']:
+            failed.append(number)
         time.sleep(1)
+    if skipped or failed:
+        print(f'Node 3 skipped (extraction under review): {skipped}; incomplete: {failed}. '
+              'Re-run classify after fixing; finished questions are not re-billed.', flush=True)
+        raise SystemExit(2)
 
 
 def figures(cfg, run):
@@ -754,9 +1068,10 @@ def figures(cfg, run):
                 x,y,w,h = box
                 # Tool replies round normalized coordinates. Preserve a one-unit
                 # safety margin so that rounding cannot remove an accepted label.
-                px = [max(0, math.floor((x-1)*im.width/1000)), max(0, math.floor((y-1)*im.height/1000)),
-                      min(im.width, math.ceil((x+w+1)*im.width/1000)), min(im.height, math.ceil((y+h+1)*im.height/1000))]
-                review = next((r for r in reviewed_crops(cfg) if r['group'] in item.get('groups', [item['group']]) and r['filename'] == filename and r['source_body_sha256'] == source['body_sha256']), None)
+                pad = 0 if cfg.get('raster_exact_crop', False) and call['name'] == 'exact_crop' else 1
+                px = [max(0, math.floor((x-pad)*im.width/1000)), max(0, math.floor((y-pad)*im.height/1000)),
+                      min(im.width, math.ceil((x+w+pad)*im.width/1000)), min(im.height, math.ceil((y+h+pad)*im.height/1000))]
+                review = next((r for r in reviewed_crops(cfg, run) if r['group'] in item.get('groups', [item['group']]) and r['filename'] == filename and r['source_body_sha256'] == source['body_sha256']), None)
                 if review: px = review['source_pixel_box']
                 cropped = im.crop(px)
                 dest = qdir / 'figures' / filename
@@ -765,8 +1080,8 @@ def figures(cfg, run):
                                       'tool_final_box': box, 'source_pixel_box': px, 'size': list(cropped.size),
                                       'sha256': sha(dest), 'method': 'lossless source-pixel crop; one normalized unit safety margin'}
                 if review: evidence[filename]['review_override'] = review
-        for reused in reuse_reviewed(cfg, item, manifest['paper_id'], item['number']):
-            crop = next(r for r in reviewed_crops(cfg) if r['group'] in item.get('groups', [item['group']]) and r['filename'] == reused['filename'])
+        for reused in reuse_reviewed(cfg, item, manifest['paper_id'], item['number'], run):
+            crop = next(r for r in reviewed_crops(cfg, run) if r['group'] in item.get('groups', [item['group']]) and r['filename'] == reused['filename'])
             source = next(r['asset_evidence'] for r in item[f'{reused["side"]}_rows'] if r['id'] == reused['resource_id'])
             dest = qdir / 'figures' / reused['filename']
             with Image.open(dest) as im: size = list(im.size)
@@ -779,6 +1094,18 @@ def figures(cfg, run):
             exported.extend({'question': item['number'], 'filename': k, **v} for k,v in evidence.items())
     dump(run / 'figure_export.json', exported)
     print(f'Exported {len(exported)} accepted figures from original pixels without upsampling.', flush=True)
+    if cfg.get('native_figure_cleanup', False):
+        from figure_cleanup import cleanup_run
+        report = cleanup_run(run)
+        print(f'Guarded native cleanup: {sum(r["changed"] for r in report)} safe trims; '
+              f'{sum(r["review_required"] for r in report)} figures flagged for review.',
+              flush=True)
+    if cfg.get('raster_exact_crop', False):
+        from crop_quality import audit_run
+        report = audit_run(run)
+        print(f'Raster crop audit: {len(report)} crops; '
+              f'{sum(r["review_required"] for r in report)} require review.',
+              flush=True)
 
 
 def pack(cfg, run):
@@ -788,10 +1115,11 @@ def pack(cfg, run):
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
     changes = []
-    pattern = re.compile(cfg['group_pattern'])
+    pattern = re.compile(cfg['group_pattern']) if cfg.get('group_pattern') else None
     for item in manifest['items']:
         old = item['number']
-        if len(item.get('groups', [item['group']])) > 1:
+        # Book mode: local 1..N IDs are assigned by the frozen plan.
+        if pattern is None or len(item.get('groups', [item['group']])) > 1:
             # Explicit merge: the local number came from merge_groups and is
             # already on disk/DB; never re-derive it from a single group.
             new = item['number']
@@ -873,118 +1201,177 @@ def merge(cfg, run, target_db=None, target_outputs=None):
 
     IDs are always regenerated by the target (AUTOINCREMENT); only
     question_number strings, topic codes and file contents carry over.
+
+    Since the universal bundle format exists, this exports the verified run
+    and merges through ``paperlab_bundle.merge_bundle`` -- one merger for
+    every importer, with backup, checksum validation and rollback.
     """
-    import database
-    verify(cfg, run)  # fail first, merge never
+    import sys
+    sys.path.insert(0, str(REPO))
+    from paperlab_bundle import merge_bundle
+    bundle = export_bundle(cfg, run)  # verify() inside: fail first, merge never
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
-    rundb = (run / 'paperlab.db').resolve()
-    target = Path(target_db or cfg.get('merge_target_db') or (REPO / 'physics_archive.db')).resolve()
-    outbase = Path(target_outputs or cfg.get('merge_target_outputs') or (target.parent / 'Outputs')).resolve()
-    if target == rundb:
-        raise ValueError('Merge target is the run database itself; point --target-db at the archive.')
-    if ROOT in target.parents:
-        raise ValueError('Merge target is inside importer_EJEE (a temp run DB); point --target-db at the archive.')
+    target = target_db or cfg.get('merge_target_db')
+    if not target:
+        raise ValueError('Merge requires an explicit --target-db')
+    if Path(target).resolve().is_relative_to(run.resolve()):
+        raise ValueError('Merge target must be outside the staging run')
+    output_arg = target_outputs or cfg.get('merge_target_outputs')
+    if output_arg and Path(output_arg).resolve().is_relative_to(run.resolve()):
+        raise ValueError('Merge target Outputs must be outside the staging run')
     already = manifest.get('merged') or {}
-    if already.get('target_db') == str(target):
+    if already.get('target_db') == str(Path(target).resolve()):
         raise ValueError(f'Already merged into {target} as paper {already["paper_id"]} '
                          f'at {already["at"]} (backup {already["backup"]}).')
-    with database.get_connection(str(rundb)) as rc:
-        paper = rc.execute('SELECT * FROM papers WHERE id=?', (manifest['paper_id'],)).fetchone()
-        if paper is None:
-            raise ValueError(f'Run paper {manifest["paper_id"]} missing from {rundb}')
-        paper = dict(paper)
-        questions = [dict(r) for r in rc.execute(
-            'SELECT * FROM questions WHERE paper_id=? ORDER BY question_number', (manifest['paper_id'],))]
-        qids = [q['id'] for q in questions]
-        links, usage = [], []
-        if qids:
-            ph = ','.join('?' for _ in qids)
-            links = [dict(r) for r in rc.execute(
-                f'SELECT question_id, topic_code, rank, src FROM question_topics WHERE question_id IN ({ph})', qids)]
-        usage = [dict(r) for r in rc.execute(
-            'SELECT phase, input, cache_read, output, reasoning, ts FROM token_usage WHERE paper_id=?',
-            (manifest['paper_id'],))]
-    existed = target.is_file()
-    if existed:
-        stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
-        backup = target.parent / f'{target.stem}.pre-merge-{stamp}.bak'
-        with sqlite3.connect(str(target)) as src, sqlite3.connect(str(backup)) as dst:
-            src.backup(dst)
-    else:
-        backup = None
-    database.init_db(str(target))
-    database.init_topics(str(target))
-    with database.get_connection(str(target)) as tc:
-        if tc.execute('SELECT id FROM papers WHERE pdf_hash=?', (paper['pdf_hash'],)).fetchone() is not None:
-            dup = tc.execute('SELECT id FROM papers WHERE pdf_hash=?', (paper['pdf_hash'],)).fetchone()['id']
-            raise ValueError(f'Target already holds this PDF pair as paper {dup}; merge refused as duplicate.')
-        cols = [r['name'] for r in tc.execute('PRAGMA table_info(papers)').fetchall() if r['name'] != 'id']
-        tc.execute(f'INSERT INTO papers ({",".join(cols)}) VALUES ({",".join("?" for _ in cols)})',
-                   [paper.get(c) for c in cols])
-        new_pid = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
-        qcols = [r['name'] for r in tc.execute('PRAGMA table_info(questions)').fetchall() if r['name'] != 'id']
-        idmap, moved = {}, []
-        for q in questions:
-            new_folder = outbase / str(new_pid) / q['question_number']
-            old_folder = Path(q['latex_folder'])
-            if not old_folder.is_dir():
-                raise ValueError(f'Run question folder missing: {old_folder}')
-            new_folder.parent.mkdir(parents=True, exist_ok=True)
-            if new_folder.exists():
-                raise ValueError(f'Target folder already exists: {new_folder}')
-            shutil.copytree(old_folder, new_folder)
-            moved.append(str(new_folder))
-            row = {c: q.get(c) for c in qcols}
-            row['paper_id'] = new_pid
-            row['latex_folder'] = str(new_folder)
-            tc.execute(f'INSERT INTO questions ({",".join(qcols)}) VALUES ({",".join("?" for _ in qcols)})',
-                       [row[c] for c in qcols])
-            idmap[q['id']] = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
-        for link in links:
-            tc.execute('INSERT INTO question_topics (question_id, topic_code, rank, src) VALUES (?,?,?,?)',
-                       (idmap[link['question_id']], link['topic_code'], link['rank'], link['src']))
-        for u in usage:
-            tc.execute('INSERT INTO token_usage (paper_id, phase, input, cache_read, output, reasoning, ts)'
-                       ' VALUES (?,?,?,?,?,?,?)',
-                       (new_pid, u['phase'], u['input'], u['cache_read'], u['output'], u['reasoning'], u['ts']))
-        srcdir = outbase / str(new_pid) / '_source'
-        srcdir.mkdir(parents=True, exist_ok=True)
-        pdf_paths = {}
-        for key in ('question_pdf', 'solution_pdf'):
-            src = manifest.get(key)
-            if not src:
-                pdf_paths[key] = None
-                continue
-            dest = srcdir / Path(src).name
-            shutil.copy2(src, dest)
-            pdf_paths[key] = str(dest)
-        tc.execute('UPDATE papers SET question_pdf_path=?, solution_pdf_path=? WHERE id=?',
-                   (pdf_paths['question_pdf'], pdf_paths['solution_pdf'], new_pid))
-        if tc.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
-            raise ValueError('Target integrity check failed after merge; transaction rolled back.')
-        if tc.execute('PRAGMA foreign_key_check').fetchall():
-            raise ValueError('Target foreign key check failed after merge; transaction rolled back.')
-        got_q = tc.execute('SELECT count(*) FROM questions WHERE paper_id=?', (new_pid,)).fetchone()[0]
-        if got_q != len(questions):
-            raise ValueError(f'Merged {got_q} questions, expected {len(questions)}; rolled back.')
-        got_l = tc.execute('SELECT count(*) FROM question_topics WHERE question_id IN '
-                           '(SELECT id FROM questions WHERE paper_id=?)', (new_pid,)).fetchone()[0]
-        if got_l != len(links):
-            raise ValueError(f'Merged {got_l} topic links, expected {len(links)}; rolled back.')
-    receipt = {'target_db': str(target), 'target_outputs': str(outbase), 'run': str(run),
-               'paper_id': new_pid, 'questions': len(questions), 'topic_links': len(links),
-               'usage_rows': len(usage), 'folders': moved,
-               'question_pdf': pdf_paths['question_pdf'], 'solution_pdf': pdf_paths['solution_pdf'],
-               'backup': str(backup) if backup else None, 'fresh_target': not existed,
-               'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
-    dump(run / 'merge.json', receipt)
-    manifest['merged'] = {'target_db': str(target), 'paper_id': new_pid,
-                          'backup': receipt['backup'], 'at': receipt['at']}
+    receipt = merge_bundle(bundle['path'], target, output_arg)
+    manifest['merged'] = {'target_db': str(Path(target).resolve()),
+                          'paper_id': receipt['papers'][0]['archive_paper'],
+                          'at': receipt['merged'], 'backup': receipt['backup'],
+                          'bundle': bundle['path']}
     dump(run / 'manifest.json', manifest)
-    print(f'Merged paper {manifest["paper_id"]} -> {target} as paper {new_pid}: '
-          f'{len(questions)} questions, {len(links)} topic links, {len(usage)} usage rows. '
-          + (f'Backup: {backup}.' if backup else 'Fresh target, no backup needed.'), flush=True)
+    dump(run / 'merge.json', receipt)
+    print(f'Merged paper {manifest["paper_id"]} -> {target} as paper {receipt["papers"][0]["archive_paper"]}: '
+          f'{receipt["papers"][0]["questions"]} questions. Backup: {receipt["backup"]}.', flush=True)
     return receipt
+
+
+def repair(cfg, run, picks=None, by=None):
+    """Fix held/flagged figures WITHOUT model calls, from measured options.
+
+    No picks: writes ``repair/<Q>__<fig>.png`` candidate sheets and
+    ``repair/candidates.json`` (current crop + per-edge in/out steps + the
+    combined expand/shrink), each with its edge diagnosis. With picks
+    (``{"10/sfig1.png": ["bottom-out"], "1/qfig1.png": ["top-in", "left-out"]}``,
+    applied in order, each measured from the previous result) the chosen
+    rectangle is recorded in ``reviewed_crops.json`` (source-hash bound, so it
+    survives re-runs) and the figures are re-exported from original pixels.
+    The new PNG must still be approved (its hash changed).
+    """
+    from PIL import Image, ImageDraw
+    from crop_quality import audit_run, edge_diagnosis, edge_steps, gap_suggestions
+    manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
+    pid = manifest['paper_id']
+    by_number = {str(i['number']): i for i in manifest['items']}
+
+    def options(src, box):
+        found = dict(edge_steps(src, box))
+        found.update(gap_suggestions(src, box))
+        return found
+
+    def frame(number, filename):
+        prov = run / 'Outputs' / str(pid) / number / 'figures' / '_import_provenance.json'
+        evidence = json.loads(prov.read_text(encoding='utf-8')).get(filename) if prov.is_file() else None
+        if not evidence:
+            raise ValueError(f'{number}/{filename}: no exported provenance; run the figures phase first')
+        return evidence
+
+    if picks:
+        if not by:
+            raise ValueError('repair --pick needs --by (who chose the rectangle)')
+        store = run / 'reviewed_crops.json'
+        reviewed = json.loads(store.read_text(encoding='utf-8')) if store.is_file() else []
+        for key, steps in picks.items():
+            number, filename = key.split('/', 1)
+            evidence = frame(number, filename)
+            with Image.open(evidence['source_body']) as image:
+                src = image.convert('RGB')
+            box = list(evidence['source_pixel_box'])
+            for step in steps:
+                found = options(src, box)
+                if step not in found:
+                    raise ValueError(f'{key}: option {step!r} not available here; have {sorted(found)}')
+                box = found[step]
+            item = by_number[number]
+            entry = {'group': item['group'], 'filename': filename, 'source_body_sha256': sha(evidence['source_body']),
+                     'source_pixel_box': box, 'reason': f'repaired by {by}: {"+".join(steps)} (measured options)',
+                     'repaired_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+            reviewed = [r for r in reviewed if not (r['group'] == entry['group'] and r['filename'] == filename)] + [entry]
+            print(f'{key}: {"+".join(steps)} -> {box}; edges now {edge_diagnosis(src, box) or "clean"}', flush=True)
+        dump(store, reviewed)
+        figures(cfg, run)
+        print('Repaired figures re-exported. Review them, then run approve.', flush=True)
+        return
+    targets = {(c['question'], c['filename']) for c in audit_run(run) if c['review_required']}
+    for review in (run / 'review_required').glob('*.json'):
+        record = json.loads(review.read_text(encoding='utf-8'))
+        targets |= {(str(record['question']), f) for f in record.get('figures', {}) if f.endswith('.png')}
+    out_dir = run / 'repair'
+    out_dir.mkdir(exist_ok=True)
+    listing = {}
+    for number, filename in sorted(targets, key=lambda t: (int(t[0]) if t[0].isdigit() else 0, t[1])):
+        try:
+            evidence = frame(number, filename)
+        except ValueError as exc:
+            listing[f'{number}/{filename}'] = {'error': str(exc)}
+            continue
+        with Image.open(evidence['source_body']) as image:
+            src = image.convert('RGB')
+        box = evidence['source_pixel_box']
+        cands = {'current': box, **options(src, box)}
+        listing[f'{number}/{filename}'] = {k: {'box': v, 'edges': edge_diagnosis(src, v) or 'clean'} for k, v in cands.items()}
+        cell, cols = 520, 3
+        rows = (len(cands) + cols - 1) // cols
+        sheet = Image.new('RGB', (cols * cell, rows * cell), 'white')
+        draw = ImageDraw.Draw(sheet)
+        for i, (name, b) in enumerate(cands.items()):
+            tile = src.crop(b)
+            tile.thumbnail((cell - 20, cell - 40))
+            x, y = (i % cols) * cell, (i // cols) * cell
+            sheet.paste(tile, (x + 5, y + 25))
+            draw.rectangle((x + 5, y + 25, x + 5 + tile.width, y + 25 + tile.height), outline='blue')
+            state = edge_diagnosis(src, b)
+            draw.text((x + 5, y + 6), f'{name}: {"clean" if not state else ", ".join(state)}', fill='red')
+        sheet.save(out_dir / f'{number}__{filename}')
+    dump(out_dir / 'candidates.json', listing)
+    print(f'{len(listing)} figure(s) to review; candidate sheets in {out_dir}', flush=True)
+    for key, cands in listing.items():
+        clean = [k for k, v in cands.items() if isinstance(v, dict) and v.get('edges') == 'clean' and k != 'current']
+        print(f'  {key}: clean options {clean or "none"}', flush=True)
+
+
+def _question_files(run, manifest, number):
+    qdir = run / 'Outputs' / str(manifest['paper_id']) / str(number)
+    files = [qdir / 'question.tex', qdir / 'solution.tex'] + sorted((qdir / 'figures').glob('[qs]fig*.png'))
+    return {str(f.relative_to(qdir)).replace('\\', '/'): sha(f) for f in files if f.is_file()}
+
+
+def approve(cfg, run, by, note, questions=None):
+    """Record a HUMAN review decision; never called by extraction.
+
+    Approves held/flagged items of the chosen questions (default: all with a
+    review record or a flagged crop). Each approval is bound to the SHA-256 of
+    the reviewed question.tex/solution.tex/figures: any later change to those
+    files invalidates it and verify blocks again.
+    """
+    if not by or not note:
+        raise ValueError('approve needs --by (reviewer) and --note (what was checked)')
+    from crop_quality import audit_run
+    manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
+    flagged = {c['question'] for c in audit_run(run) if c['review_required']}
+    held = {f.stem for f in (run / 'review_required').glob('*.json')}
+    chosen = sorted(set(questions) if questions else flagged | held, key=lambda n: (len(n), n))
+    known = {item['number'] for item in manifest['items']}
+    records = {}
+    for number in chosen:
+        if number not in known:
+            raise ValueError(f'Question {number!r} is not in this run')
+        hashes = _question_files(run, manifest, number)
+        if not {'question.tex', 'solution.tex'} <= hashes.keys():
+            raise ValueError(f'Question {number!r} has no complete transcription to approve')
+        records[number] = hashes
+    at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    approvals_file = run / 'crop_approvals.json'
+    approvals = json.loads(approvals_file.read_text(encoding='utf-8')) if approvals_file.exists() else {}
+    for number, hashes in records.items():
+        for name, digest in hashes.items():
+            if name.startswith('figures/'):
+                approvals[f'{number}/{name.split("/", 1)[1]}'] = digest
+        review = run / 'review_required' / f'{number}.json'
+        record = json.loads(review.read_text(encoding='utf-8')) if review.exists() else {'question': number}
+        record.update({'approved': True, 'approval': {'by': by, 'at': at, 'note': note, 'hashes': hashes}})
+        dump(review, record)
+    dump(approvals_file, approvals)
+    print(f'Approved {len(chosen)} question(s) by {by}: {chosen}', flush=True)
 
 
 def verify(cfg, run):
@@ -992,6 +1379,27 @@ def verify(cfg, run):
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
     errors = []
+    approved_unreadable = set()
+    for review in (run / 'review_required').glob('*.json'):
+        record = json.loads(review.read_text(encoding='utf-8'))
+        approval = record.get('approval') or {}
+        if not record.get('approved'):
+            errors.append(f'Unresolved extraction review: {review.name}: {record.get("reason", "")}')
+        elif not approval.get('hashes') or approval['hashes'] != _question_files(run, manifest, record['question']):
+            errors.append(f'{review.name}: files changed after approval by {approval.get("by")}; review again')
+        elif record.get('unreadable'):
+            approved_unreadable.add(str(record['question']))
+    if cfg.get('raster_exact_crop', False):
+        from crop_quality import audit_run, approval_errors
+        crop_report = audit_run(run)
+        approval_file = run / 'crop_approvals.json'
+        approvals = json.loads(approval_file.read_text(encoding='utf-8')) if approval_file.exists() else {}
+        current_hashes = {
+            f'{crop["question"]}/{crop["filename"]}': sha(
+                run / 'Outputs' / str(manifest['paper_id']) / str(crop['question']) / 'figures' / crop['filename']
+            ) for crop in crop_report
+        }
+        errors.extend(approval_errors(crop_report, approvals, current_hashes))
     pid = manifest['paper_id']
     with database.get_connection() as c:
         if c.execute('PRAGMA integrity_check').fetchone()[0] != 'ok': errors.append('DB integrity check failed')
@@ -1002,7 +1410,10 @@ def verify(cfg, run):
             if qt not in database.QTYPE_VALUES:
                 errors.append(f'{qn}: qtype {qt!r} outside {sorted(database.QTYPE_VALUES)}')
         for item in manifest['items']:
-            errors.extend(f'{item["number"]}: {e}' for e in validate_item(pid, item['number'], bool(item['solution_rows'])))
+            if not progress['questions'].get(item['number'], {}).get('ok'):
+                errors.append(f'{item["number"]}: extraction incomplete')
+            errors.extend(f'{item["number"]}: {e}' for e in validate_item(pid, item['number'], bool(item['solution_rows']), item_has_key(item))
+                          if not (item['number'] in approved_unreadable and 'unreadable content requires review' in e))
             if not progress['node3'].get(item['number'], {}).get('ok'): errors.append(f'{item["number"]}: Node 3 incomplete')
             for side in ('question', 'solution'):
                 for row in item[f'{side}_rows']:
@@ -1019,19 +1430,88 @@ def verify(cfg, run):
     dump(run / 'verification.json', report)
     print(json.dumps(report, indent=2), flush=True)
     if errors: raise SystemExit(1)
+    return report
+
+
+def export_bundle(cfg, run, out=None):
+    """Verify the run and package it as ONE portable PaperLab bundle (.plbundle).
+
+    The file can be copied to any machine (Windows/macOS/Linux) and merged
+    with ``python -m paperlab_bundle merge``. It carries the run DB rows,
+    Outputs, source PDFs and, per paper, every review record together with
+    its approval (who, when, what, file hashes). Refuses while verify() fails,
+    so unapproved holds can never be exported.
+    """
+    import sys
+    sys.path.insert(0, str(REPO))
+    from paperlab_bundle import build_bundle
+    verification = verify(cfg, run)  # only verified work is exportable
+    manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
+    reviews = {}
+    for record in sorted((run / 'review_required').glob('*.json')):
+        rec = json.loads(record.read_text(encoding='utf-8'))
+        reviews[record.stem] = rec
+    approvals_file = run / 'crop_approvals.json'
+    crop_approvals = json.loads(approvals_file.read_text(encoding='utf-8')) if approvals_file.exists() else {}
+    name = manifest.get('paper_name') or f'paper-{manifest["paper_id"]}'
+    safe = re.sub(r'[^\w\- .()]+', '_', name, flags=re.UNICODE).strip(' ._') or 'bundle'
+    out = Path(out or run / f'{safe}.plbundle')
+    producer = {
+        'tool': 'importer_EJEE', 'stage': 'verify+export',
+        'source': cfg.get('book_source'), 'part': manifest.get('part'),
+        'upstream_commit': manifest.get('upstream_commit'),
+    }
+    return build_bundle(
+        run / 'paperlab.db', out, [manifest['paper_id']], producer=producer,
+        extra={manifest['paper_id']: {
+            'paper_name': name,
+            'reviews': reviews,                 # each with its human approval
+            'crop_approvals': crop_approvals,   # "question/figure": approved PNG sha256
+            'verification': verification,
+            'source_refs': {item['number']: item.get('source_number', item['number'])
+                            for item in manifest['items']},
+        }},
+        sources={manifest['paper_id']: [manifest[k] for k in ('question_pdf', 'solution_pdf') if manifest.get(k)]})
+
+
+def plan_catalog(cfg, run):
+    """Freeze per-book part plans for the WHOLE source database (no LLM)."""
+    import book_plan
+    out = run
+    report = book_plan.catalog(cfg['source_db'], cfg['asset_root'], out, cfg.get('part_size', 15))
+    planned = [r for r in report if r.get('status') == 'planned']
+    print(f"Sources: {len(report)}; planned books: {len(planned)}; "
+          f"excluded: {sum(r.get('status') == 'excluded' for r in report)}; "
+          f"concept-only: {sum(r.get('status') == 'concept-only' for r in report)}", flush=True)
+    print(f"Ready questions: {sum(r['ready'] for r in planned)}; blocked: {sum(r['blocked'] for r in planned)}; "
+          f"parts: {sum(r['parts'] for r in planned)}. Catalog: {out / 'catalog.json'}", flush=True)
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('phase', choices=['inspect', 'prepare', 'extract', 'figures', 'classify', 'pack', 'verify', 'merge'])
-    p.add_argument('--config', default=str(ROOT / 'demo.json'))
+    p.add_argument('phase', choices=['inspect', 'plan', 'prepare', 'extract', 'figures', 'classify', 'pack', 'verify', 'approve', 'repair', 'export', 'merge'])
+    p.add_argument('--by', default=None, help='approve/repair: reviewer name')
+    p.add_argument('--pick', action='append', default=None,
+                   help='repair only: Q/figure=option[,option] e.g. 10/sfig1.png=bottom-out')
+    p.add_argument('--note', default=None, help='approve only: what was checked')
+    p.add_argument('--questions', default=None, help='approve only: comma-separated question numbers (default: all held/flagged)')
+    p.add_argument('--out', default=None, help='export only: bundle file path (default: <run>/<paper name>.plbundle)')
+    p.add_argument('--config', required=True, help='run config, e.g. written by run_book.py')
     p.add_argument('--target-db', default=None,
-                   help='merge only: archive database receiving the run (default: REPO/physics_archive.db)')
+                   help='merge only: explicit archive database receiving the run')
     p.add_argument('--target-outputs', default=None,
                    help='merge only: Outputs base for the archive (default: <target-db-dir>/Outputs)')
     args = p.parse_args()
     cfg, run = load_config(args.config)
     activate(run)
+    if args.phase == 'repair':
+        picks = {}
+        for spec in args.pick or []:
+            key, _, steps = spec.partition('=')
+            picks[key.strip()] = [x.strip() for x in steps.split(',') if x.strip()]
+        return repair(cfg, run, picks or None, args.by)
+    if args.phase == 'approve':
+        return approve(cfg, run, args.by, args.note, args.questions.split(',') if args.questions else None)
     if args.phase == 'merge':
         if args.target_db:
             cfg['merge_target_db'] = args.target_db
@@ -1039,7 +1519,11 @@ def main():
             cfg['merge_target_outputs'] = args.target_outputs
         merge(cfg, run)
     else:
-        {'inspect': inspect_source, 'prepare': prepare, 'extract': extract,
+        if args.phase == 'export':
+            out = export_bundle(cfg, run, args.out)
+            print(json.dumps({k: v for k, v in out.items() if k != 'files'}, indent=1, ensure_ascii=False), flush=True)
+            return
+        {'inspect': inspect_source, 'plan': plan_catalog, 'prepare': prepare, 'extract': extract,
          'figures': figures, 'classify': classify, 'pack': pack, 'verify': verify}[args.phase](cfg, run)
 
 

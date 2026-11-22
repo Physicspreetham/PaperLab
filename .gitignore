@@ -28,3 +28,14 @@ skills-lock.json
 
 # Local skill/agent workspaces (reinstalled via skills-lock.json)
 .impeccable/
+
+# Local import work and transport artifacts (may contain licensed material).
+/work/
+*.plbundle
+*.pre-bundle-merge-*.bak
+*.bundle-merges.jsonl
+*.local.json
+
+# Local state snapshots
+claude-save.rar
+claude-save-list.txt

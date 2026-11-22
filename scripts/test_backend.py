@@ -21,8 +21,11 @@ if __name__ == "__main__":
             "TEMP": folder,
             "TMP": folder,
             "PYTHONUTF8": "1",
+            "META_API_KEY": "",
+            "LANGSMITH_TRACING": "false",
         }
         sys.exit(subprocess.run(
-            [sys.executable, "-m", "pytest", "tests/", "importer_EJEE/tests/", *sys.argv[1:]],
+            [sys.executable, "-m", "pytest", "tests/", "importer_EJEE/tests/",
+             "custom_importer/tests/", "paperlab_bundle/tests/", *sys.argv[1:]],
             cwd=ROOT, env=env,
         ).returncode)

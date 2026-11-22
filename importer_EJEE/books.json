@@ -1,0 +1,6 @@
+{
+  "source_db": "inputs/ejee.db",
+  "asset_root": "inputs/uploads",
+  "run_dir": "runs/books",
+  "part_size": 15
+}

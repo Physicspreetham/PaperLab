@@ -4,8 +4,7 @@ runs/
 __pycache__/
 .pytest_cache/
 release/
-!sample_data/Outputs/
-!sample_data/Outputs/**
-# sample_data/data/ (14MB of EJEE source PDFs/body PNGs) is author-local
-# extraction input, never committed: browsing, tests and re-classification
-# need only Outputs/ + paperlab.db + ejee_sample.db + source_assets/.
+*.rar
+*.bak
+*.plbundle
+inputs/

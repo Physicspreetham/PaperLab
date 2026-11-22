@@ -11,6 +11,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from importer import body_image, part_order, source_connect, validate_item, load_config, valid_classification, strip_problem_heading, normalize_rendering, resolve_merges, paragraph_range
 
 
+def test_braced_eqno_becomes_tag_in_display_and_text_after_prose():
+    # The exact forms the model wrote in Aakash BC1 Q15 (rendered as red errors).
+    src = ("$$mg'\\cos\\beta + N = \\frac{mv^2}{r}, \\eqno{(1)}$$\n\n"
+           "whence $v^2 \\ge g'r \\cos \\beta$. \\eqno{\\text{...(2)}}\n\n"
+           "$$v^2 = v_0^2 \\sin^2 \\phi + 2g'r - 2g'r \\cos \\beta. \\eqno{\\text{...(3)}}$$")
+    fixed = normalize_rendering(src)
+    assert '\\eqno' not in fixed
+    assert '\\tag*{(1)} \\end{equation}' in fixed and '\\tag*{...(3)} \\end{equation}' in fixed
+    assert "\\cos \\beta$. ...(2)" in fixed            # outside math: printed label kept as text
+    assert '$$' not in fixed                             # tagged displays became equation envs
+    assert normalize_rendering(fixed) == fixed
+
+
 def test_equation_tags_and_literal_program_rows_survive_native_rendering():
     from bootstrap import REPO
     sys.path.insert(0,str(REPO))
@@ -70,6 +83,40 @@ def test_no_locator_does_not_silently_import_whole_card(tmp_path):
         body_image({'id': 1, 'file_name': 'card.png', 'print_meta': '{}'}, tmp_path)
 
 
+def test_key_only_solution_heading_variants_canonize_to_local_number():
+    from importer import normalize_rendering
+    canon = r'\underline{\textbf{Solution for 5}}'
+    assert normalize_rendering(r'\underline{\textbf{Solution-for 5}}', '5') == canon
+    assert normalize_rendering(canon, '5') == canon  # idempotent
+    assert normalize_rendering(r'\underline{Solution for 1}', '1') == \
+        r'\underline{\textbf{Solution for 1}}'  # missing textbf, BIIT key-only
+    assert normalize_rendering(r'\underline{Solution for Q.10} extra', '10') == \
+        r'\underline{\textbf{Solution for 10}} extra'
+    assert normalize_rendering(r'\underline{Solution-for 13}', '13') == \
+        r'\underline{\textbf{Solution for 13}}'
+    # non-heading text untouched; Answer key lines untouched
+    assert normalize_rendering('stem with Solution-for 5 in prose', '5') == 'stem with Solution-for 5 in prose'
+    assert normalize_rendering(r'\textbf{Answer: 5)} (B)', '5') == r'\textbf{Answer: 5)} (B)'
+
+
+def test_malformed_solution_heading_fails_validation(tmp_path, monkeypatch):
+    # Key-only solutions legitimately omit the Solution-for heading (established
+    # convention: Answer line + key sentence). But a PRESENT heading with a
+    # wrong label must fail loudly instead of passing silently.
+    import sys
+    from types import SimpleNamespace
+    from importer import validate_item
+    monkeypatch.setitem(sys.modules, 'directory_manager', SimpleNamespace(get_question_dir=lambda *args: tmp_path))
+    (tmp_path / 'figures').mkdir()
+    (tmp_path / 'question.tex').write_text('Question', encoding='utf-8')
+    (tmp_path / 'solution.tex').write_text(
+        '\\textbf{Answer: 1) B}\n\nNo worked solution was supplied in source.', encoding='utf-8')
+    assert not [e for e in validate_item(1, '1', False, has_key=True) if 'Solution-for' in e]
+    (tmp_path / 'solution.tex').write_text(
+        '\\textbf{Answer: 1) B}\n\n\\underline{Solution-for 1}\n\nKey.', encoding='utf-8')
+    assert any('Solution-for' in e and '!= local' in e for e in validate_item(1, '2', False, has_key=True))
+
+
 def test_continuations_use_numeric_order_not_lexical_order():
     rows = [{'title': f'Solution ({n}/12)', 'position': 0, 'id': n} for n in [10, 2, 1]]
     assert [r['id'] for r in sorted(rows, key=part_order)] == [1, 2, 10]
@@ -82,6 +129,16 @@ def test_existing_solution_cannot_be_replaced_by_placeholder(tmp_path, monkeypat
     monkeypatch.setitem(sys.modules, 'directory_manager', SimpleNamespace(get_question_dir=lambda *args: tmp_path))
     assert any('placeholder' in e for e in validate_item(1, '1.1', True))
     assert not validate_item(1, '1.1', False)
+
+
+def test_card_with_answer_key_must_keep_the_key(tmp_path, monkeypatch):
+    (tmp_path / 'figures').mkdir()
+    (tmp_path / 'question.tex').write_text('Question', encoding='utf-8')
+    (tmp_path / 'solution.tex').write_text('no_solution_found', encoding='utf-8')
+    monkeypatch.setitem(sys.modules, 'directory_manager', SimpleNamespace(get_question_dir=lambda *args: tmp_path))
+    assert any('answer key' in e for e in validate_item(1, '2', False, has_key=True))
+    (tmp_path / 'solution.tex').write_text('\\textbf{Answer: 2) B}\n\nNo worked solution supplied in source.', encoding='utf-8')
+    assert not validate_item(1, '2', False, has_key=True)
 
 
 def test_unreferenced_and_wrong_side_figures_fail(tmp_path, monkeypatch):

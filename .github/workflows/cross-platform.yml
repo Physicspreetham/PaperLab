@@ -40,8 +40,6 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Backend, extraction fixtures and real DOCX conversion
         run: python scripts/test_backend.py -q --durations=6
-      - name: Verify the portable EJEE fixture
-        run: python importer_EJEE/sample_data/verify.py
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
