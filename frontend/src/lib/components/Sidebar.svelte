@@ -28,7 +28,7 @@
 		{ href: '/builder', label: 'Paper Builder', icon: 'builder' },
 		{ href: '/inbox', label: 'Tagging Inbox', badge: props.inboxCount, admin: true, icon: 'tag' },
 		{ href: '/syllabus', label: 'Syllabus Map', admin: true, icon: 'map' },
-		{ href: '/intake', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
+		{ href: '/intake?tab=pipeline', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
 		{ href: '/ledger', label: 'Usage Ledger', admin: true, icon: 'ledger' }
 	]);
 
@@ -65,8 +65,8 @@
 				href={item.href}
 				onclick={close}
 				class="nav-item"
-				class:active={section === item.href}
-				aria-current={section === item.href ? 'page' : undefined}
+				class:active={section === item.href.split('?')[0]}
+				aria-current={section === item.href.split('?')[0] ? 'page' : undefined}
 			>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					{@html icons[item.icon]}

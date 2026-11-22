@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import database
 import graph
@@ -202,9 +202,59 @@ def test_route_indexer_submit_and_idle(tmp_db):
     ai_submit = AIMessage(content="", tool_calls=[
         {"name": "submit_metadata_and_boundaries", "args": {}, "id": "1", "type": "tool_call"},
     ])
-    assert route_indexer({"messages": [ai_submit]}) == "done"
-    assert route_indexer({"messages": [AIMessage(content="waiting")]}) == "done"
+    assert route_indexer({"messages": [ai_submit], "status": "indexer_complete"}) == "done"
+    assert route_indexer({"messages": [ai_submit]}) == "continue"
+    assert route_indexer({"messages": [AIMessage(content="waiting")]}) == "idle"
     assert route_indexer({"messages": [HumanMessage(content="hi")]}) == "continue"
+
+
+def test_indexer_retries_rejected_submit_then_splits_unpaired_combined_pdf(
+        tmp_db, tmp_path, monkeypatch):
+    import fitz
+    import directory_manager
+
+    source = tmp_path / "paper.pdf"
+    with fitz.open() as pdf:
+        for text in ("PHYSICS questions", "KEY SHEET", "PHYSICS worked solutions"):
+            pdf.new_page().insert_text((72, 72), text)
+        pdf.save(source)
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR", tmp_path / "cleaned")
+    pid = database.register_paper(str(source))
+    assert database.get_paper(pid)["solution_pdf_path"] is None
+
+    calls = []
+
+    def invoke(_llm, messages):
+        calls.append(messages[-1])
+        if len(calls) == 2:
+            assert isinstance(messages[-1], ToolMessage)
+            assert "q_end < sol_section_start" in messages[-1].content
+        return AIMessage(content="", tool_calls=[{
+            "name": graph.INDEXER_SUBMIT_TOOL,
+            "id": f"submit-{len(calls)}",
+            "args": {
+                "paper_id": pid, "paper_name": "Test paper", "exam_type": "JEE",
+                "paper_date": "", "source_institute": "", "q_start": 1,
+                "q_end": 2 if len(calls) == 1 else 1,
+                "sol_section_start": 2, "s_start": 3, "s_end": 3,
+            },
+        }])
+
+    class FakeLLM:
+        def bind_tools(self, *_args, **_kwargs):
+            return self
+
+    monkeypatch.setattr(graph, "get_llm", FakeLLM)
+    monkeypatch.setattr(graph, "invoke_with_retry", invoke)
+    final = graph.phase1_app.invoke(graph.initial_state(pid, str(source)))
+    assert len(calls) == 2
+    assert final["status"] == "indexer_complete"
+    row = database.get_paper(pid)
+    assert (row["q_start"], row["q_end"], row["s_start"], row["s_end"]) == (1, 1, 2, 2)
+    with fitz.open(row["solution_pdf_path"]) as split:
+        assert [page.get_text().strip() for page in split] == [
+            "KEY SHEET", "PHYSICS worked solutions",
+        ]
 
 
 def test_graphs_compile(tmp_db):

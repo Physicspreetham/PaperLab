@@ -206,6 +206,18 @@ def test_run_indexer_abort_marks_failed(tmp_db, tmp_path, monkeypatch):
     assert row["status"] == "failed" and "text layer" in (row["error"] or "")
 
 
+def test_run_indexer_without_a_submission_marks_failed(tmp_db, tmp_path, monkeypatch):
+    import run_indexer as ri_mod
+
+    q = tmp_path / "q.pdf"
+    q.write_bytes(b"Q")
+    monkeypatch.setattr(ri_mod, "phase1_app", FakeApp({"status": "running"}))
+    assert ri_mod.main([str(q)]) == 1
+    row = database.get_paper(1)
+    assert row["status"] == "failed"
+    assert row["error"] == "indexer produced no boundaries"
+
+
 def test_run_indexer_refuses_done_paper(tmp_db, tmp_path, monkeypatch):
     """Re-running the indexer over a done paper leaves it done."""
     import run_indexer as ri_mod

@@ -276,17 +276,12 @@ def indexer_node(state: PipelineState) -> dict:
 
 
 def route_indexer(state: PipelineState) -> str:
-    """Loop while the agent is still working; finish once it submitted.
-
-    "done" also covers the LLM stopping without tools (no infinite loop);
-    status then stays "running" and the NULL-metadata row exposes the gap.
-    """
+    """Split only after a successful save; rejected tools get another turn."""
+    if state.get("status") == "indexer_complete":
+        return "done"
     for msg in reversed(state.get("messages") or []):
         if isinstance(msg, AIMessage):
-            names = [c["name"] for c in (msg.tool_calls or [])]
-            if INDEXER_SUBMIT_TOOL in names:
-                return "done"
-            return "done" if not names else "continue"
+            return "continue" if msg.tool_calls else "idle"
     return "continue"
 
 
@@ -634,7 +629,7 @@ def _add_phase1(graph: StateGraph, indexer_done_target: str = "clean") -> None:
     )
     graph.add_edge("abort", END)
     graph.add_conditional_edges(
-        "indexer", route_indexer, {"continue": "indexer", "done": "split"}
+        "indexer", route_indexer, {"continue": "indexer", "done": "split", "idle": END}
     )
     graph.add_edge("split", indexer_done_target)
 

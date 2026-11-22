@@ -71,6 +71,16 @@ def test_tex_escaped_dollar_stays_literal():
     assert "$x$" in out and "pay \\$5 for" in out
 
 
+def test_web_segments_show_literal_dollars_instead_of_internal_markers(tmp_path):
+    from backend.segments import tex_segments
+
+    tex = r"Pay \$5. Stray $ marker. Keep $x=1$ as math."
+    html = tex_segments(tex, tmp_path, 1, "1")[0]["html"]
+    assert "Pay $5. Stray $ marker." in html
+    assert 'data-tex="x%3D1"' in html
+    assert "DOL" not in html and "\x00" not in html
+
+
 def test_tex_keeps_spaces_around_inline_math():
     from app.render import tex_to_markdown
 
