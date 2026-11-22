@@ -69,10 +69,8 @@ backup.
 **Other**
 - `load_config` accepts a UTF-8 BOM (configs saved by Notepad/PowerShell).
 - `serve_review.py` can show two runs of the same part side by side.
-- Cleanup: removed benchmarks, demo and sample data, old single-run server,
-  stale docs (`PRODUCT.md`, `CHANGES.md`, `UPSTREAM_ANALYSIS.md`,
-  `EJEE_COLUMN_MAPPING.md`), duplicate `export_bundle`, unused imports and
-  constants. `--config` is required.
+- Current setup uses the root `requirements.txt`; the old demo and sample
+  workflow has been retired. `--config` is required for individual phases.
 - Tests: 93 pass (`importer_EJEE`, `custom_importer`, `paperlab_bundle`).
 
 ## 4. Cost
@@ -109,7 +107,7 @@ cap from 8 to 6 attempts, and smaller preview images.
 
 Transcribe, never solve; `[UNREADABLE]` instead of guessing. Figures are
 original pixels only, cropped with `exact_crop`. Nothing is dropped silently;
-holds block export and merge until a human approves the exact files.
+holds block EJEE export until a human approves the exact files.
 Excluded: Allen (including study material), Sri Chaitanya, FIITJEE and actual
 JEE Advanced papers. Olympiads are left out of counts but can be run.
 
