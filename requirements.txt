@@ -12,6 +12,9 @@ fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.9
 mistune>=3.0
+PyJWT[crypto]>=2.10,<3
+# 1.13.x ships a DLL that Windows Smart App Control blocks (breaks the langgraph import).
+ormsgpack>=1.10,<1.13
 
 # System binary (not pip): tectonic — probed at runtime by app/render.py.
 # Install via https://tectonic-typesetting.github.io (e.g. `brew install tectonic`).
