@@ -95,6 +95,15 @@ python3 -m uvicorn backend.main:app --port 8000
 When `frontend/build` exists, the API serves the built site itself —
 open **http://127.0.0.1:8000** and skip terminal 2.
 
+Paper Builder's **Download Word** creates an editable `.docx` of the selected
+Question Sheet or Answer Sheet. Word lays out its own pages; use **Print / PDF**
+for the A4 preview layout. The pinned Pandoc binary ships with Python
+requirements on macOS and Linux (x64/arm64) and Windows (x64); no browser or
+Pandoc install is needed on the server. Word export runs one conversion at a
+time per API worker. On a public reverse proxy, apply its usual request-rate
+limits to `POST /api/export/docx` and allow a request body of up to 2 MiB there.
+Large or unsupported sheets fail without returning an incomplete download.
+
 ---
 
 ## 5. First paper

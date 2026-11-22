@@ -8,13 +8,9 @@ the custom styles defined here (QItem, QOpt, QFig, ...).
 """
 from __future__ import annotations
 
-import functools
+import io
 import re
-import shutil
-import subprocess
-import tempfile
 import zipfile
-from pathlib import Path
 
 FONT = "Times New Roman"
 SZ = 26  # half-points -> 13pt (source paper: Times New Roman ~13.2pt)
@@ -128,24 +124,14 @@ def _patch_document(xml: str) -> str:
     return re.sub(r"<w:sectPr>[\s\S]*?</w:sectPr>", SECT_PR, xml, count=1)
 
 
-def build_reference(pandoc_exe: str, dest: Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="paperlab_ref_") as tmp:
-        base = Path(tmp) / "base.docx"
-        with open(base, "wb") as fh:
-            subprocess.run([pandoc_exe, "--print-default-data-file", "reference.docx"],
-                           stdout=fh, check=True, timeout=60)
-        with zipfile.ZipFile(base) as zin, zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zout:
-            for item in zin.infolist():
-                data = zin.read(item.filename)
-                if item.filename == "word/styles.xml":
-                    data = _patch_styles(data.decode("utf-8")).encode("utf-8")
-                elif item.filename == "word/document.xml":
-                    data = _patch_document(data.decode("utf-8")).encode("utf-8")
-                zout.writestr(item, data)
-
-
-@functools.lru_cache(maxsize=1)
-def reference_path(pandoc_exe: str) -> str:
-    dest = Path(tempfile.gettempdir()) / "paperlab_reference_v5.docx"
-    build_reference(pandoc_exe, dest)
-    return str(dest)
+def patch_reference(template: bytes) -> bytes:
+    dest = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(template)) as zin, zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/styles.xml":
+                data = _patch_styles(data.decode("utf-8")).encode("utf-8")
+            elif item.filename == "word/document.xml":
+                data = _patch_document(data.decode("utf-8")).encode("utf-8")
+            zout.writestr(item, data)
+    return dest.getvalue()

@@ -32,6 +32,15 @@ Base URL: same-origin `/api` (dev proxy in `vite.config.js` forwards it to
 - `GET /api/papers/{id}/questions/{qn}/render?part=question|solution` -> compiled-TeX PNG (404 when the engine is unavailable)
 - `POST /api/papers/register` `{pairs: [{question, solution|null}]}` (archivist)
 
+## Paper Builder export (public)
+
+- `POST /api/export/docx` `{title, sheet}` -> `.docx` attachment.
+  `sheet` is the XHTML snapshot of the selected Builder preview. The server
+  rebuilds a small allowlist of document elements, accepts only archived PNG
+  or JPEG figure identifiers (not URLs to fetch), and runs a sandboxed
+  converter. Errors return JSON with a recoverable `detail`, never a partial
+  file. Print / PDF remains a browser action; there is no PDF conversion API.
+
 ## Tagging Inbox (archivist)
 
 - `GET /api/inbox` ->

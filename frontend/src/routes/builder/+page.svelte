@@ -26,22 +26,26 @@ import { cartStore } from '$lib/carts.js';
 	let docxMsg = $state(null); // {ok, text} | null
 
 	async function exportWord() {
-		if (docxBusy || !previewEl) return;
+		if (docxBusy || empty || !previewEl) return;
+		if (previewEl.querySelector('.loadfail, .apage [role="alert"]')) {
+			docxMsg = { ok: false, text: 'Some of the sheet didn’t load. Retry in Preview before downloading Word.' };
+			return;
+		}
+		if (previewEl.querySelector('.skel, .pframe[aria-busy="true"]')) {
+			docxMsg = { ok: false, text: 'The sheet is still loading. Wait for the preview, then try again.' };
+			return;
+		}
 		docxBusy = true;
 		docxMsg = null;
 		try {
 			const base = draft.title?.trim() || 'paper';
 			const title = previewMode === 'answers' ? `${base} - answers` : base;
-			const { missing } = await downloadDocx(previewEl, title);
-			docxMsg = {
-				ok: missing === 0,
-				text: missing ? `Word file saved, but ${missing} figure${missing === 1 ? '' : 's'} could not be loaded.` : 'Word file saved.'
-			};
+			await downloadDocx(previewEl, title);
+			docxMsg = { ok: true, text: 'Word download started.' };
 		} catch (e) {
-			docxMsg = { ok: false, text: `Word export failed: ${e.message}` };
+			docxMsg = { ok: false, text: e.message };
 		} finally {
 			docxBusy = false;
-			setTimeout(() => (docxMsg = null), 8000);
 		}
 	}
 	let undo = $state(null);
@@ -230,8 +234,8 @@ import { cartStore } from '$lib/carts.js';
 	<header class="topbar">
 		<span class="ident">Paper builder</span>
 		<div class="seg" role="group" aria-label="Preview mode">
-			<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => (previewMode = 'questions')}>Question Sheet</button>
-			<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
+			<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => { previewMode = 'questions'; docxMsg = null; }}>Question Sheet</button>
+			<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => { previewMode = 'answers'; docxMsg = null; }}>Answer Sheet</button>
 		</div>
 		<span class="docstatus" role="status">{empty ? 'Empty draft' : `${draft.mode === 'paper' ? 'Paper' : 'Assignment'} · ${nBlocks} blocks · ${num.total} numbers`}</span>
 		{#if undo}
@@ -266,14 +270,19 @@ import { cartStore } from '$lib/carts.js';
 				<option value="stix">STIX Two Text</option>
 			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
-			<button type="button" class="pl-btn" disabled={docxBusy || empty} onclick={exportWord} title="Download the current sheet as a Word file (equations stay editable)">{docxBusy ? 'Exporting…' : 'Word (.docx)'}</button>
-			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
+			<div class="exportactions" role="group" aria-label="Export current sheet">
+				<button
+					type="button" class="pl-btn pl-btn-primary" disabled={empty} aria-disabled={docxBusy || undefined}
+					onclick={exportWord} title="Download the current sheet as an editable Word document. Page breaks can change."
+				>Download Word</button>
+				<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
+			</div>
+		</div>
+		<div class="exportstatus" class:exporterror={!docxBusy && docxMsg && !docxMsg.ok} role="status">
+			{docxBusy ? 'Preparing Word document…' : docxMsg?.text ?? ''}
 		</div>
 	</header>
 
-	{#if docxMsg}
-		<div class={docxMsg.ok ? 'pl-sub' : 'pl-error'} role="status" style="padding: 6px 16px;">{docxMsg.text}</div>
-	{/if}
 	{#if $builderCorrupt}
 		<div class="pl-error corrupt" role="alert">
 			<strong>Saved builder draft was corrupt.</strong>
@@ -567,6 +576,27 @@ import { cartStore } from '$lib/carts.js';
 		display: flex;
 		gap: 8px;
 		align-items: center;
+	}
+	.exportactions {
+		display: flex;
+		gap: 8px;
+		padding-inline-start: 8px;
+		border-inline-start: 1px solid var(--pl-line);
+	}
+	.exportactions [aria-disabled='true'] {
+		opacity: 0.55;
+		cursor: wait;
+	}
+	.exportstatus:empty {
+		position: absolute;
+	}
+	.exportstatus:not(:empty) {
+		flex-basis: 100%;
+		font-size: 0.8rem;
+		color: var(--pl-ink-soft);
+	}
+	.exportstatus.exporterror {
+		color: var(--pl-seal);
 	}
 	/* Compact 2-3 chrome buttons: beat the global 44px touch target. */
 	.topbar .pl-btn,
@@ -1036,7 +1066,7 @@ import { cartStore } from '$lib/carts.js';
 			padding: 0;
 		}
 	}
-	@media (max-width: 900px) {
+	@media screen and (max-width: 900px) {
 		.page {
 			height: auto;
 			min-height: 0;
@@ -1085,6 +1115,35 @@ import { cartStore } from '$lib/carts.js';
 		.panebody,
 		.previewscroll {
 			overflow: visible;
+		}
+	}
+	@media screen and (max-width: 560px) {
+		.actions {
+			flex: 1 0 100%;
+			margin-left: 0;
+			flex-wrap: wrap;
+			justify-content: space-between;
+		}
+		.actions .fontsel {
+			max-width: min(132px, 35%);
+		}
+		.exportactions {
+			flex: 1 0 100%;
+			border-inline-start: none;
+			padding-inline-start: 0;
+		}
+		.topbar .exportactions .pl-btn {
+			flex: 1;
+			min-height: 44px;
+			justify-content: center;
+			text-align: center;
+		}
+		.workspace {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.panehead,
+		.previewmeta {
+			flex-wrap: wrap;
 		}
 	}
 </style>

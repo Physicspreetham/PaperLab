@@ -16,40 +16,16 @@ local function styled(style, blocks)
 end
 
 -- ---- pass 1 ---------------------------------------------------------
--- Words of 4+ letters inside math ("Joule", "Tesla/sec") are units typed in
--- math mode; set them upright like the source paper instead of as
--- letter-spaced italic variables. Arguments of text-like commands and TeX
--- command names themselves (\frac, \sin, \begin{array} ...) are left alone.
-local KEEP_CMDS = {
-  text = true, mathrm = true, textbf = true, mathbf = true, operatorname = true,
-  begin = true, ['end'] = true, color = true, hspace = true, vspace = true,
-  textit = true, mbox = true, mathit = true,
-}
-
-local function upright_words(tex)
-  local keep = {}
-  tex = tex:gsub('\\(%a+)(%b{})', function(cmd, body)
-    if KEEP_CMDS[cmd] then
-      keep[#keep + 1] = '\\' .. cmd .. body
-      return '\1' .. #keep .. '\2'
-    end
-  end)
-  tex = tex:gsub('()(%a%a%a%a+)', function(pos, word)
-    if pos > 1 and tex:sub(pos - 1, pos - 1) == '\\' then return nil end
-    return '\\mathrm{' .. word .. '}'
-  end)
-  tex = tex:gsub('\1(%d+)\2', function(i) return keep[tonumber(i)] end)
-  return tex
-end
-
 local function Span(el)
   if el.classes:includes('math') then
     local kind = el.classes:includes('display') and 'DisplayMath' or 'InlineMath'
-    local tex = pandoc.utils.stringify(el)
-    -- A script with no base ("^{\circ}C") renders as an empty placeholder
-    -- box in Word; a leading ^{\circ} is just a degree sign.
-    tex = tex:gsub('^%s*%^%s*{%s*\\circ%s*}', '°'):gsub('^%s*%^%s*\\circ', '°')
-    return pandoc.Math(kind, upright_words(tex))
+    return pandoc.Math(kind, pandoc.utils.stringify(el))
+  end
+end
+
+local function Header(el)
+  if el.classes:includes('pl-solutions') then
+    return { pandoc.RawBlock('openxml', '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'), el }
   end
 end
 
@@ -157,7 +133,10 @@ local function visual_width(inlines)
   for _, i in ipairs(inlines) do
     if i.t == 'Str' then w = w + (utf8.len(i.text) or #i.text)
     elseif i.t == 'Math' then w = w + tex_width(i.text) + 1
-    else w = w + 1 end
+    elseif i.t == 'Space' or i.t == 'SoftBreak' then w = w + 1
+    -- Don't guess at image or rich-text dimensions; give those options their
+    -- own lines instead of overflowing a column.
+    else return math.huge end
   end
   return w
 end
@@ -244,12 +223,16 @@ local function convert_list(list, depth)
     if not is_bullet then n = n + 1 end
     local style = is_bullet and 'QBullet' or (depth == 0 and 'QItem' or 'QSub')
     local cont = depth == 0 and 'QItemCont' or 'QSubCont'
+    local lab = is_bullet and pandoc.Str(label) or pandoc.Strong({ pandoc.Str(label) })
+    if #item == 0 or (item[1].t ~= 'Para' and item[1].t ~= 'Plain') then
+      -- A list item can start with a diagram or table, not just text.
+      out:insert(styled(style, { pandoc.Para({ lab }) }))
+    end
     local first = true
     for _, b in ipairs(item) do
       if b.t == 'OrderedList' or b.t == 'BulletList' then
         out:extend(convert_list(b, depth + 1))
       elseif first and (b.t == 'Para' or b.t == 'Plain') then
-        local lab = is_bullet and pandoc.Str(label) or pandoc.Strong({ pandoc.Str(label) })
         local inl = pandoc.List({ lab, tab() })
         inl:extend(b.content)
         out:insert(styled(style, { pandoc.Para(inl) }))
@@ -266,7 +249,7 @@ local function OrderedList(el) return convert_list(el, 0), false end
 local function BulletList(el) return convert_list(el, 0), false end
 
 return {
-  { Span = Span },
+  { Span = Span, Header = Header },
   { Table = Table },
   { Para = Para, Plain = Plain, Figure = Figure },
   { Blocks = Blocks },
