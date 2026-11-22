@@ -85,7 +85,8 @@ export function snapshotWordSheet(root) {
 export async function downloadDocx(root, title) {
 	const body = JSON.stringify({ sheet: snapshotWordSheet(root), title });
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), 40000);
+	// Allow the server's upload (10s), cold startup (30s) and conversion (30s) budgets.
+	const timer = setTimeout(() => controller.abort(), 80000);
 	let response, file, error;
 	try {
 		response = await fetch(`${BASE}/export/docx`, {

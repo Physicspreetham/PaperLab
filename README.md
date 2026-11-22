@@ -144,8 +144,9 @@ return `{"ok":true}`. On every platform, stop the foreground server with
 - Keep port `8000` bound to localhost behind an HTTPS reverse proxy (for
   example Caddy, nginx, or IIS). Proxy both the site and `/api` to it on the
   same hostname. Set the proxy's upload limit to accommodate your intake
-  PDFs, and allow up to 2 MiB and rate-limit `POST /api/export/docx`. Word
-  conversion is also limited to one active request per API process.
+  PDFs. For `POST /api/export/docx`, allow up to 2 MiB, use an upstream
+  timeout of at least 80 seconds for cold starts, and apply rate limits.
+  Word conversion is also limited to one active request per API process.
 - Give the service account write access to its SQLite file and its
   `Outputs/` and `data/` directories. Use persistent local storage, not an
   ephemeral container layer or a shared network filesystem for SQLite.

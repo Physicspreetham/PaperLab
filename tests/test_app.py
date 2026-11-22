@@ -1,6 +1,8 @@
 """App helper tests: pairing, tex preprocessing, tex->png fallback."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.pairing import auto_pair, stem
@@ -153,7 +155,7 @@ def test_split_tex_extracts_figures(tmp_path):
         tmp_path)
     kinds = [k for k, _ in segs]
     assert kinds == ["text", "fig", "text"]
-    assert segs[1][1].endswith("figures/fig1.png")
+    assert Path(segs[1][1]) == (tmp_path / "figures" / "fig1.png").resolve()
     assert "$x$" in segs[2][1]
 
 

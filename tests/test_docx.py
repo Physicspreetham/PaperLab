@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from subprocess import CompletedProcess, TimeoutExpired
 from xml.etree import ElementTree as ET
 import zipfile
 
@@ -10,6 +11,7 @@ from PIL import Image
 
 import database
 import directory_manager
+from backend import docx
 from backend.docx import InvalidSheet, PandocUnavailable, _pandoc, _verify_pandoc, build_pandoc_input
 from backend.main import app
 from backend.routers import export
@@ -147,9 +149,39 @@ def test_word_does_not_require_a_converter_for_the_rest_of_the_app(tmp_db, monke
 
 
 def test_incompatible_standalone_pandoc_is_rejected(tmp_path, monkeypatch):
-    from subprocess import CompletedProcess
-
     monkeypatch.setattr("backend.docx.subprocess.run", lambda *a, **kw:
                         CompletedProcess(a[0], 0, stdout=b"pandoc 3.8\n"))
     with pytest.raises(PandocUnavailable, match="must point to Pandoc 3.9"):
-        _verify_pandoc(tmp_path / "pandoc", str(tmp_path), {})
+        _verify_pandoc(tmp_path / "pandoc", str(tmp_path), {}, timeout=30)
+
+
+def test_reference_startup_shares_budget_and_caches_success(tmp_path, monkeypatch):
+    clock = iter((100.0, 100.0, 112.0))
+    monkeypatch.setattr(docx, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(docx, "patch_reference", lambda template: template + b"-styled")
+    calls = []
+
+    def run(args, *, timeout, **options):
+        calls.append((args[-1], timeout))
+        data = b"pandoc 3.9\n" if args[-1] == "--version" else b"template"
+        return CompletedProcess(args, 0, stdout=data)
+
+    monkeypatch.setattr(docx.subprocess, "run", run)
+    try:
+        for _ in range(2):
+            assert docx._reference_docx(tmp_path / "pandoc", True) == b"template-styled"
+        assert calls == [("--version", 30.0), ("--print-default-data-file=reference.docx", 18.0)]
+    finally:
+        docx._reference_docx.cache_clear()
+
+
+def test_version_timeout_returns_504_and_names_stage(tmp_db, tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(docx, "_pandoc", lambda: (tmp_path / "pandoc", True))
+
+    def timeout(args, *, timeout, **opts):
+        raise TimeoutExpired(args, timeout)
+
+    monkeypatch.setattr(docx.subprocess, "run", timeout)
+    response = TestClient(app).post("/api/export/docx", json={"title": "Paper", "sheet": sheet("<p>Question</p>")})
+    assert response.status_code == 504
+    assert "version check timed out" in caplog.text

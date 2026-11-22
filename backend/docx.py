@@ -7,6 +7,7 @@ reach Pandoc. Pass --sandbox as an independent file-access boundary.
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
 import html
 from importlib.util import find_spec
 import io
@@ -15,6 +16,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+from time import monotonic
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
@@ -26,6 +28,8 @@ from backend.docx_reference import patch_reference
 
 _LUA = Path(__file__).with_name("pandoc_docx.lua").resolve()
 _PANDOC_VERSION = b"3.9"  # Also bundled by requirements-word.txt.
+_STARTUP_TIMEOUT = 30      # Allow a cold executable launch on macOS.
+_CONVERSION_TIMEOUT = 30   # Per-document work after startup.
 _NS = "{http://www.w3.org/1999/xhtml}"
 _TAGS = set("""
     div header section p span h1 h2 h3 h4 h5 h6 em strong b i u s del sup sub
@@ -186,6 +190,10 @@ class PandocUnavailable(RuntimeError):
     """The configured or bundled converter cannot be used on this server."""
 
 
+class PandocTimedOut(RuntimeError):
+    """A named converter stage exceeded its time budget."""
+
+
 def _pandoc() -> tuple[Path, bool]:
     """Prefer an explicit operator override, otherwise the pinned wheel."""
     override = os.environ.get("PAPERLAB_PANDOC")
@@ -203,50 +211,80 @@ def _pandoc() -> tuple[Path, bool]:
     raise PandocUnavailable("Install the Word requirements or configure PAPERLAB_PANDOC (see README.md)")
 
 
-def _verify_pandoc(exe: Path, folder: str, env: dict[str, str]) -> None:
+def _run_pandoc(args: list[str], *, stage: str, timeout: float, **options):
+    try:
+        if timeout <= 0:
+            raise subprocess.TimeoutExpired(args, timeout)
+        return subprocess.run(args, timeout=timeout, **options)
+    except subprocess.TimeoutExpired as exc:
+        raise PandocTimedOut(f"{stage} timed out") from exc
+
+
+def _verify_pandoc(exe: Path, folder: str, env: dict[str, str], *, timeout: float) -> None:
     # External versions may change the reference template, flags and Lua API.
     try:
-        version = subprocess.run(
+        version = _run_pandoc(
             [str(exe), "--version"], cwd=folder, env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, timeout=5, check=True,
+            stderr=subprocess.DEVNULL, stage="version check", timeout=timeout, check=True,
         ).stdout.splitlines()[:1]
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise PandocUnavailable("Could not run the executable in PAPERLAB_PANDOC") from exc
+    except subprocess.CalledProcessError as exc:
+        raise PandocUnavailable(f"PAPERLAB_PANDOC exited with status {exc.returncode} on --version") from exc
+    except OSError as exc:
+        raise PandocUnavailable(f"Could not run the executable in PAPERLAB_PANDOC: {exc.strerror}") from exc
     if not version or version[0].split()[:2] != [b"pandoc", _PANDOC_VERSION]:
         raise PandocUnavailable(f"PAPERLAB_PANDOC must point to Pandoc {_PANDOC_VERSION.decode()}")
+
+
+def _pandoc_env(folder: str) -> dict[str, str]:
+    env = {"HOME": folder, "TMPDIR": folder, "TEMP": folder, "TMP": folder}
+    if os.name == "nt":
+        # Keep the converter out of the service account's profile while
+        # retaining the system directory needed by Windows processes.
+        system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+        if not system_root:
+            raise PandocUnavailable("The Windows service environment must define SystemRoot")
+        env.update(SystemRoot=system_root, APPDATA=folder, LOCALAPPDATA=folder, USERPROFILE=folder)
+    return env
+
+
+def _pandoc_args(exe: Path, folder: str) -> list[str]:
+    # The converter gets no archive paths or API credentials. The workspace,
+    # runtime heap and execution time are independently bounded.
+    return [str(exe), "+RTS", "-M256m", "-RTS", "--sandbox", "--data-dir", folder]
+
+
+@lru_cache(maxsize=2)
+def _reference_docx(exe: Path, verify_version: bool) -> bytes:
+    # Bootstrap once per converter. Cache only a successful, immutable
+    # template; each export still gets its own private working directory.
+    with tempfile.TemporaryDirectory(prefix="paperlab_pandoc_") as folder:
+        env = _pandoc_env(folder)
+        deadline = monotonic() + _STARTUP_TIMEOUT
+        if verify_version:
+            _verify_pandoc(exe, folder, env, timeout=deadline - monotonic())
+        defaults = _run_pandoc(
+            [*_pandoc_args(exe, folder), "--print-default-data-file=reference.docx"], cwd=folder, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True,
+            stage="reference template", timeout=deadline - monotonic(),
+        ).stdout
+    return patch_reference(defaults)
 
 
 def render_docx(sheet: str) -> bytes:
     source = build_pandoc_input(sheet)
     exe, verify_version = _pandoc()
+    template = _reference_docx(exe, verify_version)
     with tempfile.TemporaryDirectory(prefix="paperlab_word_") as folder:
         workspace = Path(folder)
         reference = workspace / "reference.docx"
         out = workspace / "paper.docx"
-        env = {"HOME": folder, "TMPDIR": folder, "TEMP": folder, "TMP": folder}
-        if os.name == "nt":
-            # Keep the converter out of the service account's profile while
-            # retaining the system directory needed by Windows processes.
-            system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
-            if not system_root:
-                raise PandocUnavailable("The Windows service environment must define SystemRoot")
-            env.update(SystemRoot=system_root, APPDATA=folder, LOCALAPPDATA=folder, USERPROFILE=folder)
-        if verify_version:
-            _verify_pandoc(exe, folder, env)
-        # The converter receives no archive paths or API credentials. Its
-        # workspace, runtime heap and execution time are bounded independently.
-        args = [str(exe), "+RTS", "-M256m", "-RTS", "--sandbox", "--data-dir", folder]
-        defaults = subprocess.run(
-            [*args, "--print-default-data-file=reference.docx"], cwd=folder, env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True, timeout=5,
-        ).stdout
-        reference.write_bytes(patch_reference(defaults))
+        reference.write_bytes(template)
         with (workspace / "conversion.log").open("wb") as warnings:
-            subprocess.run(
-                [*args, "-f", "html-raw_html", "-t", "docx", "--reference-doc", str(reference),
+            _run_pandoc(
+                [*_pandoc_args(exe, folder), "-f", "html-raw_html", "-t", "docx", "--reference-doc", str(reference),
                  "--lua-filter", str(_LUA), "-o", str(out)],
-                cwd=folder, env=env, input=source, stdout=subprocess.DEVNULL, stderr=warnings,
-                check=True, timeout=20,
+                cwd=folder, env=_pandoc_env(folder), input=source, stdout=subprocess.DEVNULL, stderr=warnings,
+                check=True, stage="DOCX conversion", timeout=_CONVERSION_TIMEOUT,
             )
         with (workspace / "conversion.log").open("rb") as warnings:
             # Pandoc otherwise silently flattens unsupported math or drops figures.
