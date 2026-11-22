@@ -82,3 +82,17 @@ actual workflow in a browser. Check the relevant desktop and mobile layouts,
 keyboard interactions, and loading, empty, and error states. A passing build
 does not prove the feature works or looks right. If you cannot verify
 something, say what is unverified rather than calling it ready.
+
+## macOS and Linux support is required; Windows is best effort
+
+New features and deployment changes must work on macOS and on headless
+Linux servers. Before calling a change ready, verify the documented install,
+the build when applicable, and the affected workflow on both platforms.
+Dependency resolution alone is not a runtime check. Report any unverified
+platform or failing required check.
+
+Keep Windows compatible where practical and run its checks when available.
+Record Windows-specific limitations or setup steps in `README.md` instead
+of weakening the macOS or Linux path. Prefer portable filesystem and process
+APIs, avoid platform-specific paths and shell assumptions, and document
+which features need extra downloads and how to install them on each OS.

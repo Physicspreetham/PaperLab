@@ -10,7 +10,7 @@ from PIL import Image
 
 import database
 import directory_manager
-from backend.docx import InvalidSheet, build_pandoc_input
+from backend.docx import InvalidSheet, PandocUnavailable, _pandoc, _verify_pandoc, build_pandoc_input
 from backend.main import app
 from backend.routers import export
 
@@ -34,7 +34,18 @@ def figure(tmp_db, tmp_outputs, dummy_pdf):
     return path, f"/api/papers/{pid}/questions/1/figures/{path.name}"
 
 
-def test_word_download_has_editable_equations_key_and_figure(figure):
+@pytest.mark.parametrize("explicit", [False, True], ids=["bundled", "configured"])
+def test_word_download_has_editable_equations_key_and_figure(figure, monkeypatch, explicit):
+    # Use the same known converter to exercise both ways of provisioning it.
+    available, configured = _pandoc()
+    if explicit:
+        monkeypatch.setenv("PAPERLAB_PANDOC", str(available))
+    elif configured:
+        monkeypatch.delenv("PAPERLAB_PANDOC")
+        try:
+            _pandoc()
+        except PandocUnavailable:
+            pytest.skip("testing a platform provisioned with standalone Pandoc")
     _, ref = figure
     doc = sheet(
         r'<h2>Mechanics</h2><ol start="7"><li>Find <span class="math inline">x = \frac{v}{2}</span>.</li></ol>'
@@ -125,3 +136,20 @@ def test_body_limit_checks_actual_bytes_and_conversions_do_not_queue(monkeypatch
     assert busy.status_code == 429 and busy.headers["retry-after"] == "5"
     assert client.post(endpoint, content=b"{", headers=headers).status_code == 422
     assert client.post("/api/export/pdf", json={}).status_code in {404, 405}
+
+
+def test_word_does_not_require_a_converter_for_the_rest_of_the_app(tmp_db, monkeypatch):
+    monkeypatch.setenv("PAPERLAB_PANDOC", "invalid-relative-path")
+    client = TestClient(app)
+    response = client.post("/api/export/docx", json={"title": "Paper", "sheet": sheet("<p>Question</p>")})
+    assert response.status_code == 503
+    assert client.get("/api/health").json() == {"ok": True}
+
+
+def test_incompatible_standalone_pandoc_is_rejected(tmp_path, monkeypatch):
+    from subprocess import CompletedProcess
+
+    monkeypatch.setattr("backend.docx.subprocess.run", lambda *a, **kw:
+                        CompletedProcess(a[0], 0, stdout=b"pandoc 3.8\n"))
+    with pytest.raises(PandocUnavailable, match="must point to Pandoc 3.9"):
+        _verify_pandoc(tmp_path / "pandoc", str(tmp_path), {})

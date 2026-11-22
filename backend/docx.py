@@ -25,6 +25,7 @@ import directory_manager
 from backend.docx_reference import patch_reference
 
 _LUA = Path(__file__).with_name("pandoc_docx.lua").resolve()
+_PANDOC_VERSION = b"3.9"  # Also bundled by requirements-word.txt.
 _NS = "{http://www.w3.org/1999/xhtml}"
 _TAGS = set("""
     div header section p span h1 h2 h3 h4 h5 h6 em strong b i u s del sup sub
@@ -181,26 +182,57 @@ def build_pandoc_input(sheet: str) -> bytes:
             + inner + "</body></html>").encode()
 
 
-def _pandoc() -> Path:
+class PandocUnavailable(RuntimeError):
+    """The configured or bundled converter cannot be used on this server."""
+
+
+def _pandoc() -> tuple[Path, bool]:
+    """Prefer an explicit operator override, otherwise the pinned wheel."""
+    override = os.environ.get("PAPERLAB_PANDOC")
+    if override:
+        path = Path(override).expanduser()
+        if not path.is_absolute() or not path.is_file() or (os.name == "nt" and path.suffix.lower() != ".exe"):
+            raise PandocUnavailable("PAPERLAB_PANDOC must name an absolute path to a Pandoc executable")
+        return path.resolve(), True
     package = find_spec("pypandoc")
     exe = "pandoc.exe" if os.name == "nt" else "pandoc"
     if package and package.origin:
         bundled = Path(package.origin).resolve().parent / "files" / exe
         if bundled.is_file():
-            return bundled
-    raise FileNotFoundError("Install PaperLab requirements to provision Pandoc")
+            return bundled, False
+    raise PandocUnavailable("Install the Word requirements or configure PAPERLAB_PANDOC (see README.md)")
+
+
+def _verify_pandoc(exe: Path, folder: str, env: dict[str, str]) -> None:
+    # External versions may change the reference template, flags and Lua API.
+    try:
+        version = subprocess.run(
+            [str(exe), "--version"], cwd=folder, env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, timeout=5, check=True,
+        ).stdout.splitlines()[:1]
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PandocUnavailable("Could not run the executable in PAPERLAB_PANDOC") from exc
+    if not version or version[0].split()[:2] != [b"pandoc", _PANDOC_VERSION]:
+        raise PandocUnavailable(f"PAPERLAB_PANDOC must point to Pandoc {_PANDOC_VERSION.decode()}")
 
 
 def render_docx(sheet: str) -> bytes:
     source = build_pandoc_input(sheet)
-    exe = _pandoc()
+    exe, verify_version = _pandoc()
     with tempfile.TemporaryDirectory(prefix="paperlab_word_") as folder:
         workspace = Path(folder)
         reference = workspace / "reference.docx"
         out = workspace / "paper.docx"
         env = {"HOME": folder, "TMPDIR": folder, "TEMP": folder, "TMP": folder}
         if os.name == "nt":
-            env["SystemRoot"] = os.environ["SystemRoot"]
+            # Keep the converter out of the service account's profile while
+            # retaining the system directory needed by Windows processes.
+            system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+            if not system_root:
+                raise PandocUnavailable("The Windows service environment must define SystemRoot")
+            env.update(SystemRoot=system_root, APPDATA=folder, LOCALAPPDATA=folder, USERPROFILE=folder)
+        if verify_version:
+            _verify_pandoc(exe, folder, env)
         # The converter receives no archive paths or API credentials. Its
         # workspace, runtime heap and execution time are bounded independently.
         args = [str(exe), "+RTS", "-M256m", "-RTS", "--sandbox", "--data-dir", folder]

@@ -4,7 +4,7 @@ This contribution adds only `importer_EJEE/`, with no changes to PaperLab's appl
 
 **Start with [sample_data/README.md](sample_data/README.md)** for exact launch and reproduction commands. The package contains 22 questions across three chapter entries from two books: full Morin Chapter 1, a two-question Morin Chapter 2 excerpt, and a two-question Hibbeler Chapter 12 excerpt. Seven diagram PNGs, mapped explanations, fresh upstream Node 3 results and 94 actual usage rows are included. The minimal EJEE input fixture contains 40 selected resource parts with their source images and taxonomy ancestors; no student/exam records, full textbook PDFs, production data or credentials are included.
 
-Browsing the converted sample requires no API calls or key. `serve_sample.py --port 8001` copies the fixture into a separate writable review directory and rebases paths on the reviewer's machine; run the existing frontend normally on 5173. New conversions use the reviewer's own `META_API_KEY` and make paid requests. Relative config paths resolve from the config directory; generated run directories must stay inside this importer.
+Browsing the converted sample requires no API calls or key. `serve_sample.py --port 8001` copies the fixture into a separate writable review directory and rebases paths on the reviewer's machine. Build the frontend once and open port 8001 directly; for Vite development instead, run the sample API on port 8000. New conversions use the reviewer's own `META_API_KEY` and make paid requests. Relative config paths resolve from the config directory; generated run directories must stay inside this importer.
 
 ## Two-step process: stage, then merge
 
@@ -12,17 +12,17 @@ Browsing the converted sample requires no API calls or key. `serve_sample.py --p
 run's own database (`runs/<name>/paperlab.db`); the production archive is
 never opened. Serve and inspect the result first:
 
-```powershell
-python importer_EJEE/importer.py prepare --config <run.json>
-# ... extract, figures, classify, pack, verify (see Run-Demo.ps1 for the order)
-python importer_EJEE/serve.py --run-dir runs/<name> --port 8011
+```sh
+python importer_EJEE/importer.py prepare --config importer_EJEE/demo.json
+# Then extract, figures, classify, pack, verify; see sample_data/README.md.
+python importer_EJEE/serve.py --run-dir runs/morin-chapter-01 --port 8011
 ```
 
 **Step 2 — merge into the archive.** Only after `verify` passes, promote the
 staged run into the real database with the `merge` phase:
 
-```powershell
-python importer_EJEE/importer.py merge --config <run.json> --target-db C:/path/to/physics_archive.db
+```sh
+python importer_EJEE/importer.py merge --config importer_EJEE/demo.json --target-db "./physics_archive.db"
 ```
 
 `--target-outputs` overrides where question folders land (default:

@@ -547,12 +547,12 @@ def reflow_paper(paper_id: int, output_base=None,
     root = Path(output_base) / str(paper_id)
     out = {}
     for tex in sorted(root.glob("*/solution.tex")):
-        original = tex.read_text()
+        original = tex.read_text(encoding="utf-8")
         new, rep = reflow_solution_tex(original)
         rep["file"] = str(tex.parent.name) + "/solution.tex"
         rep["changed"] = new != original
         if rep["changed"] and not report_only:
-            tex.write_text(new)
+            tex.write_text(new, encoding="utf-8")
         out[str(tex)] = rep
     return out
 

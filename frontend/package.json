@@ -7,6 +7,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
+		"test": "node --test \"scripts/*.test.mjs\"",
 		"smoke": "node scripts/smoke.mjs",
 		"test:cart": "node --test scripts/cart-model.test.mjs",
 		"test:model-paper": "node --test scripts/model-paper.test.mjs",

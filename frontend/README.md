@@ -6,12 +6,11 @@ Reading Room tokens in `src/app.css` (which mirror `DESIGN.md`).
 
 ## Run
 
-```sh
-cd frontend
-npm install
-npm run dev      # http://127.0.0.1:5173, /api proxied to :8000
-npm run build    # static output in build/
-```
+Follow the [root setup guide](../README.md) for macOS, Windows, and Linux.
+Use Node 24 LTS and `npm ci`. `npm run dev` serves port 5173 and proxies
+`/api` to FastAPI on port 8000. `npm run build` writes `frontend/build/`,
+which FastAPI serves directly in production. On Windows PowerShell use
+`npm.cmd` if script execution is disabled.
 
 ## Structure (best-practice SvelteKit)
 
@@ -45,8 +44,4 @@ frontend/
 `role` store (`student` | `archivist`) only hides edit UI. Real enforcement
 must happen server-side on every admin endpoint — see BACKEND_CONTRACT.md.
 
-## Backend status
-
-The Python API does **not** exist yet. Until it does, pages render friendly
-"backend unreachable" states and the Streamlit app (`streamlit run app/app.py`)
-remains the working application.
+See [BACKEND_CONTRACT.md](BACKEND_CONTRACT.md) for the FastAPI routes.

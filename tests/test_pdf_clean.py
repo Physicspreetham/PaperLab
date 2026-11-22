@@ -584,7 +584,7 @@ def test_step2_rules_match_prompt():
     from pathlib import Path
     from tools_extractor import _STEP2_RULES
 
-    prompt = Path("prompts/extractor_prompt.md").read_text()
+    prompt = Path("prompts/extractor_prompt.md").read_text(encoding="utf-8")
     flat = re.sub(r"\s+", " ", prompt)
     assert set(_STEP2_RULES) == {"left", "top", "right", "bottom"}
     for edge, rule in _STEP2_RULES.items():

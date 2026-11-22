@@ -12,7 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from backend.docx import InvalidSheet, render_docx
+from backend.docx import InvalidSheet, PandocUnavailable, render_docx
 
 router = APIRouter()
 _log = logging.getLogger(__name__)
@@ -58,8 +58,8 @@ async def export_docx(request: Request) -> Response:
             data = await run_in_threadpool(render_docx, draft.sheet)
         except InvalidSheet as exc:
             raise HTTPException(exc.status, str(exc)) from None
-        except FileNotFoundError:
-            _log.exception("Bundled Word converter not available")
+        except PandocUnavailable as exc:
+            _log.warning("Word export unavailable: %s", exc)
             raise HTTPException(503, "Word export is unavailable. You can still use Print / PDF.") from None
         except subprocess.TimeoutExpired:
             raise HTTPException(504, "Word export took too long. Split the draft or use Print / PDF.") from None

@@ -4,105 +4,163 @@ Turns physics question-paper PDFs (JEE / NEET style) into a clean, searchable
 library. Upload PDFs → AI extracts every question into LaTeX with cropped
 figures → browse in Archive, filter in Search Questions, tag in the Inbox.
 
-Stack: **FastAPI backend** (`backend/`, port 8000) + **SvelteKit frontend**
-(`frontend/`, port 5173 in dev). Run everything from the repo root.
+Stack: **FastAPI** API, **SQLite** storage, and a **SvelteKit** frontend.
+**macOS and Linux are required deployment targets**, including headless
+Linux servers. **Windows and Windows Server are supported on a best-effort
+basis.**
 
 ---
 
-## 0. You need
+## 1. What to download
 
-- **Python 3.10+** ([python.org](https://www.python.org/downloads/);
-  on Windows tick **"Add python.exe to PATH"**), **Git**, internet.
-- **Node 18+** ([nodejs.org](https://nodejs.org/)) — for the frontend.
-- **Meta API key** — ask the project owner, or grab one from the Meta API console.
-- *(Optional)* **Tectonic** ([installers](https://tectonic-typesetting.github.io/en-US/install))
-  — only for the "Render as image" button; everything else works without it.
+| You want to… | What you need |
+|---|---|
+| Run the app, upload PDFs, or browse an existing archive | [Git](https://git-scm.com/downloads) to get the code, [Python 3.12](https://www.python.org/downloads/) and the packages in `requirements.txt`. Python includes SQLite; the packages include PDF handling. No separate database or PDF server. |
+| Build or develop the frontend | [Node.js 24 LTS](https://nodejs.org/en/download) with npm. Node is needed where you **build**, not where you serve an already-built `frontend/build/`. Node 18 does not meet the frontend's dependency requirements. |
+| Index, extract, or automatically tag questions | A project-authorized **Meta API key** and outbound access to the model endpoint. Browse, edit, build papers, print, and export without an AI key. |
+| Print or save a PDF | Your **client browser**. In Paper Builder, click **Print / PDF**, then choose **Save as PDF** (or **Microsoft Print to PDF** on Windows). No browser or TeX install on the server. |
+| Download editable Word files | The pinned **Pandoc** binary is installed by the Python requirements on macOS and Linux (x64 and arm64) and Windows (x64 Python). See [Word converter setup](#word-converter-setup) for other targets. Microsoft Word is not required on the server. |
+| Use **Render as image** for TeX | Optional: install [Tectonic](https://tectonic-typesetting.github.io/en-US/install) **on the API host** and put its executable on `PATH`. The TeX bundle may download on first use. Normal KaTeX rendering and export do not use Tectonic. |
+
+**Platform notes**
+
+- **macOS:** Use the Python and Node installers for your Mac (Apple Silicon or
+  Intel). `git --version` may prompt to install Apple's Command Line Tools.
+  For optional TeX rendering, use Homebrew (`brew install tectonic`) or the
+  [Tectonic releases](https://github.com/tectonic-typesetting/tectonic/releases).
+- **Windows / Windows Server:** Install Python 3.12 x64 with the `py` launcher
+  and install Node.js x64 and Git for Windows. On Windows on ARM, use x64
+  Python under emulation and follow the [standalone Pandoc
+  instructions](#word-converter-setup) if the wheel isn't selected. The
+  PowerShell commands below use `.venv\Scripts\python.exe` and `npm.cmd`,
+  so no execution-policy change is needed. For Tectonic, pick the Windows
+  release and add the folder containing `tectonic.exe` to the API account's
+  `PATH`.
+- **Linux:** Use Python 3.12 with `venv` and a Node 24 distribution for your
+  architecture. For example, on Ubuntu 24.04 install `git`, `python3`, and
+  `python3-venv` with APT and get Node from the official download page.
+  For Tectonic, choose the Linux release for your CPU and put it on `PATH`.
 
 ```bash
-git clone git@github.com:Vivek5170/PaperLab.git
-# ...or over HTTPS: git clone https://github.com/Vivek5170/PaperLab.git
+git clone https://github.com/Vivek5170/PaperLab.git
 cd PaperLab
 ```
 
----
+## 2. Install and configure
 
-## 1. Backend setup (once)
+Run these commands from the checkout root.
 
-| Mac | Windows (`cmd`) |
-|---|---|
-| `python3 -m venv .venv` | `py -m venv .venv` |
-| `source .venv/bin/activate` | `.venv\Scripts\activate` |
-| `pip install -r requirements.txt` | `pip install -r requirements.txt` |
+**macOS / Linux**
 
-> You must see `(.venv)` in your terminal — redo the `activate` line in every
-> new terminal. Blocked script on Windows PowerShell? Run once:
-> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-
-## 2. Frontend setup (once)
-
-```bash
-cd frontend
-npm install
-cd ..
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+npm --prefix frontend ci
 ```
 
-## 3. Keys (once)
+**Windows (PowerShell)**
 
-```bash
-# Mac: cp .env.example .env | Windows cmd: copy .env.example .env
-# Windows PowerShell: Copy-Item .env.example .env
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+npm.cmd --prefix frontend ci
 ```
 
-Edit `.env` (any text editor) and set:
+If your platform doesn't ship Python 3.12, [uv](https://docs.astral.sh/uv/getting-started/installation/)
+can download it and create the venv: use `uv venv --python 3.12 --seed .venv`
+in place of the first command, then continue with the same pip step.
+
+Copy `.env.example` only on a fresh install; keep your existing `.env` when
+upgrading. Set a strong archivist password before hosting. Leave `META_API_KEY`
+blank unless you need the AI pipeline.
 
 ```ini
-META_API_KEY=sk-paste-your-real-key-here
-PAPERLAB_ADMIN_PASSWORD=choose-a-strong-password   # default is "admin" — change before hosting
+PAPERLAB_ADMIN_PASSWORD=choose-a-strong-password
+META_API_KEY=
 ```
 
-Non-secret settings (model, paths, pricing) live in `config.yaml` and work
-as-is; `.env` overrides them only when set (see `.env.example`).
+Configuration defaults live in `config.yaml`; `.env` or the process
+environment can override them. Never commit `.env`.
 
----
+### Word converter setup
 
-## 4. Run (two terminals, every time)
+On the supported wheel targets listed above, installing `requirements.txt`
+is enough. If no wheel is available for your environment, get **Pandoc 3.9**
+from the [official releases](https://github.com/jgm/pandoc/releases/tag/3.9)
+or build that version from the official source, then set `PAPERLAB_PANDOC` in
+`.env` to the absolute executable path. The override takes precedence over
+the bundle. Use forward slashes in Windows `.env` paths.
 
-Terminal 1 — API (must run from the repo root, `.venv` active):
-
-```bash
-python3 -m uvicorn backend.main:app --port 8000
+```ini
+# macOS/Linux example
+PAPERLAB_PANDOC="/opt/pandoc/bin/pandoc"
+# Windows alternative (set only one value)
+# PAPERLAB_PANDOC="C:/Tools/Pandoc/pandoc.exe"
 ```
 
-Terminal 2 — frontend:
+If Pandoc is missing or incompatible, **Download Word** reports that it's
+unavailable; other features keep working. Word can reflow pages. Use
+**Print / PDF** for the A4 preview layout, or if the converter reports math
+it cannot include without losing content.
 
-```bash
-cd frontend
-npm run dev -- --port 5173 --host 127.0.0.1
+## 3. Build and run (production or local use)
+
+Run the build once on install and after frontend updates. Start the API from
+the checkout root. It serves the built frontend and API on the same port.
+To keep Node off the server, build from the same Git revision on another
+machine and copy the complete `frontend/build/` directory into the server's
+checkout before starting the API.
+
+**macOS / Linux**
+
+```sh
+npm --prefix frontend run build
+.venv/bin/python -X utf8 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:5173**. The dev server proxies `/api` to the backend.
+**Windows (PowerShell)**
 
-> Sessions live in server memory: restarting the API logs everyone out
-> (just log in again). Running uvicorn from any other directory breaks imports.
-
-### Production (single process)
-
-```bash
-cd frontend && npm run build && cd ..
-python3 -m uvicorn backend.main:app --port 8000
+```powershell
+npm.cmd --prefix frontend run build
+.\.venv\Scripts\python.exe -X utf8 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-When `frontend/build` exists, the API serves the built site itself —
-open **http://127.0.0.1:8000** and skip terminal 2.
+Open **http://127.0.0.1:8000/**. **http://127.0.0.1:8000/api/health** should
+return `{"ok":true}`. On every platform, stop the foreground server with
+`Ctrl+C`; restarting clears archivist sessions.
 
-Paper Builder's **Download Word** creates an editable `.docx` of the selected
-Question Sheet or Answer Sheet. Word lays out its own pages; use **Print / PDF**
-for the A4 preview layout. The pinned Pandoc binary ships with Python
-requirements on macOS and Linux (x64/arm64) and Windows (x64); no browser or
-Pandoc install is needed on the server. Word export runs one conversion at a
-time per API worker. On a public reverse proxy, apply its usual request-rate
-limits to `POST /api/export/docx` and allow a request body of up to 2 MiB there.
-Large or unsupported sheets fail without returning an incomplete download.
+### Hosting on a server
+
+- Run **one API process** under your OS service manager, as a non-admin
+  account, with the checkout as its working directory. Use the full venv
+  Python path from the commands above. Use `systemd` on Linux, `launchd` on
+  macOS, or Task Scheduler on Windows (trigger **At startup**, set **Start
+  in** to the checkout, and run whether or not the user is logged on).
+  The server does not need a display.
+  For **Render as image**, make sure the service account sees Tectonic on its
+  `PATH` (`tectonic --version` in that environment).
+- Keep port `8000` bound to localhost behind an HTTPS reverse proxy (for
+  example Caddy, nginx, or IIS). Proxy both the site and `/api` to it on the
+  same hostname. Set the proxy's upload limit to accommodate your intake
+  PDFs, and allow up to 2 MiB and rate-limit `POST /api/export/docx`. Word
+  conversion is also limited to one active request per API process.
+- Give the service account write access to its SQLite file and its
+  `Outputs/` and `data/` directories. Use persistent local storage, not an
+  ephemeral container layer or a shared network filesystem for SQLite.
+  Override paths with `PHYSICS_ARCHIVE_DB`, `PHYSICS_OUTPUT_BASE`, and
+  `DATA_ROOT`; use absolute paths for services. Back up those three locations.
+  When moving an existing archive to another machine, rebase and verify
+  any absolute PDF paths stored in SQLite **before** starting the new API.
+
+## 4. Develop with hot reload
+
+Run the API command above on port `8000` in one terminal. In a second
+terminal at the checkout root, run `npm --prefix frontend run dev -- --host
+127.0.0.1` on macOS/Linux or `npm.cmd --prefix frontend run dev -- --host
+127.0.0.1` in Windows PowerShell. Open **http://127.0.0.1:5173/**. The Vite
+development server proxies `/api` to the API on port `8000`.
 
 ---
 
@@ -188,11 +246,18 @@ so reviewers can tell which classification the model actually made.
 
 ## 6. Verify / test
 
-```bash
-python3 -m pytest tests/ -q        # backend suite (from repo root, .venv active)
-cd frontend && npm run build        # frontend build must pass
-npm run smoke                       # SSR smoke check (from frontend/)
-```
+| Check | macOS / Linux | Windows PowerShell |
+|---|---|---|
+| Backend tests (isolated database, outputs and media) | `.venv/bin/python scripts/test_backend.py -q` | `.\.venv\Scripts\python.exe scripts/test_backend.py -q` |
+| Frontend tests | `npm --prefix frontend test` | `npm.cmd --prefix frontend test` |
+| Production build | `npm --prefix frontend run build` | `npm.cmd --prefix frontend run build` |
+| Render smoke check (API running on port 8000) | `npm --prefix frontend run smoke` | `npm.cmd --prefix frontend run smoke` |
+
+The [cross-platform workflow](.github/workflows/cross-platform.yml) runs the
+backend tests (including real DOCX conversion), frontend tests and production
+build on macOS, Linux and Windows. macOS and Linux checks must pass; Windows
+checks run separately and are advisory. No AI key is needed. Tests requiring
+untracked source PDFs are skipped on a fresh clone.
 
 ## Disk usage
 
@@ -209,9 +274,10 @@ and tex, `data/archive/`, or the 2 DB-referenced `*_solsplit.pdf` files
 
 | Symptom | Fix |
 |---|---|
-| `ModuleNotFoundError` / `uvicorn: command not found` | Activate `.venv` first, reinstall requirements |
-| `META_API_KEY is ... placeholder` | You didn't edit `.env` |
+| `ModuleNotFoundError` | Use the venv Python from the run commands and reinstall `requirements.txt` |
+| `META_API_KEY is ... placeholder` | Set a valid `.env` key if you want to run indexing, extraction, or auto-tagging |
 | Frontend shows API errors / `401` | Backend not running, or wrong cwd — restart uvicorn from repo root |
+| Word export unavailable | Reinstall the Python requirements, or verify `PAPERLAB_PANDOC` and `pandoc --version` using the [Word setup](#word-converter-setup) |
 | Logged out after restart | Expected — sessions are in-memory, log in again |
 | Port already in use | Server already runs in another terminal |
 | `Render as image` fails | Install Tectonic (optional; KaTeX view still works) |
