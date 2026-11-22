@@ -11,7 +11,7 @@ import config  # noqa: F401  (pins env first, same as every entry point)
 import database
 from app.pairing import reconcile_missing_sources
 from app.runs import reset_stuck_running_once
-from backend.routers import auth, figures, inbox, jobs, papers, search, stats, tex, topics, uploads
+from backend.routers import auth, export, figures, inbox, jobs, papers, search, stats, tex, topics, uploads
 
 app = FastAPI(title="PaperLab API", version="0.1.0")
 
@@ -51,6 +51,7 @@ app.include_router(figures.router, prefix="/api/papers/{paper_id}/questions/{qn}
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
+app.include_router(export.router, prefix="/api/export", tags=["export"])
 
 _FRONTEND_BUILD = Path(__file__).parent.parent / "frontend" / "build"
 if _FRONTEND_BUILD.is_dir():

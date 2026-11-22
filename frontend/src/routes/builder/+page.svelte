@@ -9,6 +9,7 @@ import { cartStore } from '$lib/carts.js';
 	import BuilderBlock from '$lib/components/BuilderBlock.svelte';
 	import QuestionSheetPreview from '$lib/components/QuestionSheetPreview.svelte';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
+	import { downloadDocx } from '$lib/exportDocx.js';
 
 	const draft = $derived($builderStore);
 	const order = $derived($docOrder);
@@ -20,6 +21,29 @@ import { cartStore } from '$lib/carts.js';
 	let confirmNew = $state(false);
 	let previewMode = $state('questions'); // questions | answers
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
+	let previewEl = $state(null);
+	let docxBusy = $state(false);
+	let docxMsg = $state(null); // {ok, text} | null
+
+	async function exportWord() {
+		if (docxBusy || !previewEl) return;
+		docxBusy = true;
+		docxMsg = null;
+		try {
+			const base = draft.title?.trim() || 'paper';
+			const title = previewMode === 'answers' ? `${base} - answers` : base;
+			const { missing } = await downloadDocx(previewEl, title);
+			docxMsg = {
+				ok: missing === 0,
+				text: missing ? `Word file saved, but ${missing} figure${missing === 1 ? '' : 's'} could not be loaded.` : 'Word file saved.'
+			};
+		} catch (e) {
+			docxMsg = { ok: false, text: `Word export failed: ${e.message}` };
+		} finally {
+			docxBusy = false;
+			setTimeout(() => (docxMsg = null), 8000);
+		}
+	}
 	let undo = $state(null);
 	let undoTimer = null;
 	let collapsed = $state({});
@@ -242,10 +266,14 @@ import { cartStore } from '$lib/carts.js';
 				<option value="stix">STIX Two Text</option>
 			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
+			<button type="button" class="pl-btn" disabled={docxBusy || empty} onclick={exportWord} title="Download the current sheet as a Word file (equations stay editable)">{docxBusy ? 'Exporting…' : 'Word (.docx)'}</button>
 			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>
 	</header>
 
+	{#if docxMsg}
+		<div class={docxMsg.ok ? 'pl-sub' : 'pl-error'} role="status" style="padding: 6px 16px;">{docxMsg.text}</div>
+	{/if}
 	{#if $builderCorrupt}
 		<div class="pl-error corrupt" role="alert">
 			<strong>Saved builder draft was corrupt.</strong>
@@ -466,7 +494,7 @@ import { cartStore } from '$lib/carts.js';
 					<span class="pl-sub">Live A4 · print exact</span>
 				</span>
 			</div>
-			<div class="previewscroll">
+			<div class="previewscroll" bind:this={previewEl}>
 				{#if previewMode === 'questions'}
 					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} figScale={figScale} />
 				{:else}
