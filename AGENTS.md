@@ -48,3 +48,37 @@ evidence that originals also separate math, and offer only these:
 eyeball pass per paper); or (c) a full print-redesign project with a
 text+math matched pair, re-validation of all fixtures, re-pagination, and
 new visual snapshots. Never implement (b) or (c) as a drive-by CSS edit.
+
+## Extraction is transcription, not solving
+
+Preserve the source as written. Do not invent missing answers or steps,
+silently correct the physics, or guess at illegible content; mark unreadable
+text as `[UNREADABLE]`. Transcribe handwritten working as LaTeX, including
+continuations on the next page. Keep handwritten labels, arrows, and other
+diagram annotations in the image instead. Check each crop against the full
+rendered PDF page: a clean embedded image can still be missing its pen
+annotations.
+
+## Keep pipeline stages separate and tests isolated
+
+Run extraction only after the indexer successfully saves page boundaries and,
+for a combined PDF, the split succeeds. Topic tagging can fail or be retried
+without failing an otherwise complete extraction or rerunning it. Preserve
+the source PDFs and other stages' outputs. Back up any output you replace.
+Tests must use isolated databases, outputs, and media directories. Tests that
+purge files must never point at the live archive or its caches.
+
+## Ship only features that are ready for deployment
+
+Keep changes scoped to the request. Do not add temporary features,
+placeholder controls, mock paths in production, or workarounds that only
+work on a developer's machine. If an experiment is useful, keep it out of
+the shipped app. Use the existing configuration and deployment conventions
+rather than hardcoding local paths or relying on manual setup that nobody
+has documented.
+
+Before calling a UI change done, run the production build and verify the
+actual workflow in a browser. Check the relevant desktop and mobile layouts,
+keyboard interactions, and loading, empty, and error states. A passing build
+does not prove the feature works or looks right. If you cannot verify
+something, say what is unverified rather than calling it ready.
