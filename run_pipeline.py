@@ -210,6 +210,7 @@ def run_pipeline(paper_id: int, force: bool = False,
 
                     todo = targets(paper_id)
                     if todo:
+                        primary_mode = config.topic_primary_mode()
                         topic_reference = build_topic_reference()
                         last_call = 0.0
                         for p, q in todo:
@@ -217,7 +218,7 @@ def run_pipeline(paper_id: int, force: bool = False,
                             if gap > 0:
                                 time.sleep(gap)
                             try:
-                                classify_question(p, q, topic_reference)
+                                classify_question(p, q, topic_reference, primary_mode=primary_mode)
                             except Exception as exc:
                                 print(f"topics: [{p}/{q}] skipped: "
                                       f"{type(exc).__name__}: {exc}")

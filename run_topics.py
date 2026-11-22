@@ -9,6 +9,8 @@ Usage:
     python run_topics.py [paper_id] [question_number] [--limit N] [--refill]
 
 Defaults: every question with no human topics and no auto topics yet.
+``topics.primary_mode`` in config.yaml controls which selected topic is
+saved as main; the prompt and raw model reply do not change.
 --refill also redoes auto-tagged ones. Nothing here blocks extraction.
 """
 
@@ -152,7 +154,8 @@ def parse_topics_output(text: str, n_topics: int) -> dict:
 
 def classify_question(paper_id: int, question_number: str,
                       topic_reference: tuple[list[str], dict[int, str]] | None = None,
-                      *, replace_auto: bool = False) -> dict:
+                      *, replace_auto: bool = False,
+                      primary_mode: int | None = None) -> dict:
     """Run the classifier for one question; write auto rows; return report."""
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -163,6 +166,8 @@ def classify_question(paper_id: int, question_number: str,
         if (qdir / "solution.tex").is_file() else ""
     if not qtex.strip():
         return {"ok": False, "error": "question.tex missing/empty"}
+    if primary_mode is None:
+        primary_mode = config.topic_primary_mode()
     topic_lines, topic_codes = topic_reference or build_topic_reference()
     system = (PROMPTS_DIR / "topic_prompt.md").read_text(encoding="utf-8")
     messages = [
@@ -189,7 +194,14 @@ def classify_question(paper_id: int, question_number: str,
         reasoning_tokens=out_det.get("reasoning", 0),
     )
     qid = database.get_question_id(paper_id, question_number)
-    codes = [topic_codes[v] for v in parsed["numbers"]]
+    model_numbers = parsed["numbers"]
+    numbers = model_numbers
+    if primary_mode == 2 and not parsed["errors"] and len(numbers) > 1:
+        # The numbers are positions in the exact syllabus passed to the
+        # classifier. Promote the latest pick without reordering the rest.
+        primary = max(numbers)
+        numbers = [primary, *(n for n in numbers if n != primary)]
+    codes = [topic_codes[n] for n in numbers]
     if (codes or replace_auto) and not parsed["errors"]:
         database.set_question_topics(qid, codes, src="auto")
     # Suggestion is write-only-when-spoken: auto never clears human text.
@@ -198,7 +210,8 @@ def classify_question(paper_id: int, question_number: str,
         paper_id, question_number, parsed["difficulty"],
         topic_suggestion=parsed["suggestion"], only_fill=True,
     )
-    return {"ok": True, "numbers": parsed["numbers"], "codes": codes,
+    return {"ok": True, "numbers": numbers, "codes": codes,
+            "model_numbers": model_numbers, "primary_mode": primary_mode,
             "difficulty": parsed["difficulty"],
             "suggestion": parsed["suggestion"],
             "raw_reply": text,
@@ -276,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Node 3: {len(todo)} question(s) to classify")
     if not todo:
         return 0
+    primary_mode = config.topic_primary_mode()
     topic_reference = build_topic_reference()
     ok = errs = 0
     t0 = time.time()
@@ -285,7 +299,9 @@ def main(argv: list[str] | None = None) -> int:
         if gap > 0:
             time.sleep(gap)
         try:
-            rep = classify_question(p, q, topic_reference, replace_auto=refill)
+            rep = classify_question(
+                p, q, topic_reference, replace_auto=refill, primary_mode=primary_mode
+            )
         except Exception as exc:  # one bad question never stops the batch
             print(f"  [{p}/{q}] FAILED: {type(exc).__name__}: {exc}")
             errs += 1

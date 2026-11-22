@@ -31,6 +31,13 @@ llm:
   retry_base_sec: 2.0
   retry_budget_sec: 300.0
 
+# Node 3 ranking after the model has selected its tags. Read at the start
+# of each tagging run; existing tags and the model prompt are not changed.
+topics:
+  # 1: keep the model's main topic. 2: promote the latest selected
+  # topic in the numbered syllabus order to main.
+  primary_mode: 2
+
 # Optional price-per-million-tokens for the run cost line.
 pricing:
   input_per_mtok: 0.10
