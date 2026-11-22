@@ -21,11 +21,14 @@ def _configured_password() -> str:
 
 def uses_default_password() -> bool:
     """True when no real password is configured (change it before hosting)."""
-    return not os.environ.get("PAPERLAB_ADMIN_PASSWORD")
+    return _configured_password() == DEFAULT_PASSWORD
 
 
 def check_password(candidate: str | None) -> bool:
     """Timing-safe password comparison; empty/None never matches."""
     if not candidate:
         return False
-    return hmac.compare_digest(candidate, _configured_password())
+    try:
+        return hmac.compare_digest(candidate.encode("utf-8"), _configured_password().encode("utf-8"))
+    except UnicodeEncodeError:
+        return False

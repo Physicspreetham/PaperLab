@@ -549,6 +549,111 @@ def test_text_underscores_escaped_math_untouched():
     assert out.count(r"\_") == 7 + 1  # 7 blank + 1 pre-escaped
 
 
+@pytest.mark.parametrize("formula", [
+    r"\(a_1=\mathrm{m_2}\)",
+    r"\[\frac{m_1}{m_2}\]",
+    r"\begin{equation}a_1=\frac{m_2}{m_3}\label{eq_mass}\end{equation}",
+    r"\begin{align*}v_1&=v_2\\a_1&=a_2\end{align*}",
+    r"\begin{gather}x_1\\[2pt]y_2\end{gather}",
+    r"\begin{multline*}x_1+y_1\\+z_1\end{multline*}",
+    r"$x_1$$x_2$",
+])
+def test_text_underscore_normalization_preserves_math(formula):
+    from tools_extractor import _escape_text_underscores
+
+    source = f"entry_name: {formula} end_text"
+    wanted = rf"entry\_name: {formula} end\_text"
+    assert _escape_text_underscores(source) == wanted
+    assert _escape_text_underscores(wanted) == wanted
+    assert verify_latex_syntax.invoke({"latex_string": wanted}) == "Valid"
+
+
+def test_comments_code_and_literal_arguments_are_not_normalized():
+    from tools_extractor import _escape_text_underscores
+
+    source = (
+        r"$$a_1=\text{file_name {flag_id} and $x_2$}+\mathrm{V_0}\label{eq_a}$$" "\n"
+        r"% source_id {$ not math \end{bogus}" "\n"
+        r"\begin{verbatim}" "\n" r"`foo_bar` = {$x \end{bogus}" "\n" r"\end{verbatim}" "\n"
+        r"\verb|a_b $ {| \url{https://example.org/a_b} and \ref{eq_a}"
+    )
+    saved = _escape_text_underscores(source)
+    assert saved == source.replace("file_name {flag_id}", r"file\_name {flag\_id}")
+    assert verify_latex_syntax.invoke({"latex_string": saved}) == "Valid"
+
+
+@pytest.mark.parametrize("body", [r"\(x_1", r"x_1\)", r"\[x_1\)", r"\begin{align*}x_1\end{align}"])
+def test_verify_latex_rejects_bad_display_or_inline_pairs(body):
+    assert verify_latex_syntax.invoke({"latex_string": body}) != "Valid"
+
+
+def test_both_native_savers_preserve_subscripts_and_reader_renders_inline(tmp_db, tmp_outputs, tmp_path):
+    from urllib.parse import unquote
+    from app.render import tex_to_markdown
+    from backend.segments import rich_text
+
+    pid = _paper_id(tmp_db, tmp_path)
+    data = {"paper_id": pid, "question_number": "1"}
+    question = r"Find \(v_1\)." "\n\n" r"\begin{equation}v_1=\frac{r_2}{t_3}\end{equation}"
+    solution = r"\textbf{Answer: 1)} \(v_1\)" "\n\n" r"\begin{align*}v_1&=v_2\\a_1&=a_2\end{align*}"
+    assert submit_question.invoke({**data, "latex_content": question}) == "saved"
+    assert submit_solution.invoke({**data, "latex_content": solution}) == "saved"
+    qdir = tmp_outputs / str(pid) / "1"
+    assert (qdir / "question.tex").read_text(encoding="utf-8") == question
+    assert (qdir / "solution.tex").read_text(encoding="utf-8") == solution
+    html = unquote(rich_text(tex_to_markdown(question)))
+    assert 'data-tex="v_1" data-display="0"' in html
+    assert 'data-tex="v_1=\\frac{r_2}{t_3}" data-display="1"' in html
+
+
+def test_key_only_solution_passes_normal_validation(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    data = {"paper_id": pid, "question_number": "1"}
+    assert submit_question.invoke({**data, "latex_content": "Question."}) == "saved"
+    qdir = tmp_outputs / str(pid) / "1"
+    for key in (r"\textbf{Answer: 1) $x_1}", r"Answer: 1) \includegraphics{qfig1.png}"):
+        assert submit_solution.invoke({**data, "latex_content": key + "\nno_solution_found"}).startswith("NOT SAVED")
+        assert not (qdir / "solution.tex").exists()
+    assert submit_solution.invoke({**data, "latex_content": "Key: 1) $x_1$\nno_solution_found"}) == "saved"
+    assert "$x_1$" in (qdir / "solution.tex").read_text(encoding="utf-8")
+
+
+def test_savers_check_real_figure_commands_not_comments_or_paths_in_prose(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    data = {"paper_id": pid, "question_number": "1"}
+    qdir = dm.ensure_question_dir(pid, "1")
+    (qdir / "figures" / "qfig1.png").write_bytes(b"figure")
+    body = ("Question. % example \\includegraphics{figures/missing.png}\n"
+            r"Use \includegraphics [width=\linewidth] {qfig1.png}.")
+    assert submit_question.invoke({**data, "latex_content": body}) == "saved"
+    saved = (qdir / "question.tex").read_text(encoding="utf-8")
+    assert r"\includegraphics[width=\linewidth]{figures/qfig1.png}" in saved
+    assert r"% example \includegraphics{figures/missing.png}" in saved
+    assert "invalid figure path" in submit_question.invoke({
+        **data, "latex_content": r"See \includegraphics{../qfig1.png}."})
+    for command in (r"\includegraphics*{figures/qfig1.png}", r"\includegraphics{figures/qfig{1}.png}"):
+        assert "Unsupported figure command" in submit_question.invoke({
+            **data, "latex_content": f"See {command}."})
+    assert "question-side figure" in submit_solution.invoke({
+        **data, "latex_content": r"Key: A" "\n" r"See \includegraphics{qfig1.png}."})
+    assert (qdir / "question.tex").read_text(encoding="utf-8") == saved
+
+
+def test_solution_normalization_does_not_split_multiline_inline_math(tmp_db, tmp_outputs, tmp_path):
+    from urllib.parse import unquote
+    from app.render import tex_to_markdown
+    from backend.segments import rich_text
+
+    pid = _paper_id(tmp_db, tmp_path)
+    data = {"paper_id": pid, "question_number": "1"}
+    assert submit_question.invoke({**data, "latex_content": "Question."}) == "saved"
+    solution = "Key: A\nAssume $v_1\n= v_2$.\nIt follows that $a_1=a_2$."
+    assert submit_solution.invoke({**data, "latex_content": solution}) == "saved"
+    saved = (tmp_outputs / str(pid) / "1" / "solution.tex").read_text(encoding="utf-8")
+    assert "$v_1\n= v_2$" in saved
+    assert 'data-tex="v_1\n= v_2"' in unquote(rich_text(tex_to_markdown(saved)))
+
+
 def test_submit_escapes_blank_underscores(tmp_db, tmp_outputs, tmp_path):
     pid = _paper_id(tmp_db, tmp_path)
     body = "Q: value is _______ $cm$ with $x_1$."

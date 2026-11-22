@@ -147,6 +147,16 @@ return `{"ok":true}`. On every platform, stop the foreground server with
   PDFs. For `POST /api/export/docx`, allow up to 2 MiB, use an upstream
   timeout of at least 80 seconds for cold starts, and apply rate limits.
   Word conversion is also limited to one active request per API process.
+- To enable [remote bundle imports](paperlab_bundle/README.md#upload-to-a-deployed-server),
+  configure a strong, non-default `PAPERLAB_ADMIN_PASSWORD`. Enforce HTTPS at
+  the proxy, pass the original `Host` and the proxy's `X-Forwarded-Proto`, and
+  let Uvicorn trust forwarded headers **only** from the proxy's address
+  (loopback by default). Rate-limit `/api/auth/login` and
+  `/api/bundles/import`; don't log request bodies or cookies. Allow up to
+  64 MiB for the bundle route and a proxy response timeout suitable for a
+  full SQLite backup and merge (start with 10 minutes). Monitor free disk
+  space and retain backups according to your recovery policy. Changing
+  the archivist password requires restarting the API to revoke existing sessions.
 - Give the service account write access to its SQLite file and its
   `Outputs/` and `data/` directories. Use persistent local storage, not an
   ephemeral container layer or a shared network filesystem for SQLite.
@@ -201,9 +211,9 @@ selections stay in the current browser.
 
 | Source | Start here |
 |---|---|
-| EJEE database and uploads | [EJEE importer](importer_EJEE/README.md): plan books into **15-question parts**, stage, review, and export. See the [13 live pilots and cost tables](importer_EJEE/EJEE_SOURCES.md), [pilot handoff](importer_EJEE/STATUS.md), and [upstream findings](importer_EJEE/suggestions.md). |
+| EJEE database and uploads | [EJEE importer](importer_EJEE/README.md): plan books into **15-question parts**, stage, review, and export. See the [13 live pilots and cost tables](importer_EJEE/EJEE_SOURCES.md) and [pilot handoff](importer_EJEE/STATUS.md). |
 | Other textbook, worksheet, or paper | [Custom importer](custom_importer/README.md) for manual or agent-assisted transcription; send agents the [transcription skill](custom_importer/SKILL.md). |
-| A portable `.plbundle` already exported | [PaperLab bundle guide](paperlab_bundle/README.md): inspect, dry-run, and merge into an explicitly selected archive. |
+| A portable `.plbundle` already exported | [PaperLab bundle guide](paperlab_bundle/README.md): inspect, dry-run, and merge through the local CLI or [the deployed archivist API](paperlab_bundle/README.md#upload-to-a-deployed-server). |
 
 Both importers stage away from the archive and export the same bundle format.
 Review before publishing. Archive merges take a SQLite backup, reject

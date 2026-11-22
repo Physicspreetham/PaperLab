@@ -152,7 +152,8 @@ h2 = _hashlib.sha256((q1dir / "solution.tex").read_bytes()).hexdigest()
 assert h1 and h2 and q1dir.is_dir()
 reviews = {
     "1": {"approved": True, "approval": {"by": "rev", "at": "t", "note": "eyes on",
-                                         "hashes": {"question.tex": h1, "solution.tex": h2}}},
+                                         "hashes": {"question.tex": h1, "solution.tex": h2,
+                                                    "figures/qfig1.png": _sha(q1dir / "figures" / "qfig1.png")}}},
     "2": {"reason": "edge cuts content, needs human"},
 }
 assert set(reviews) == {"1", "2"} and len(h1) == 64 and len(h2) == 64
@@ -161,6 +162,7 @@ assert isinstance(bf, str) and bf.endswith(".plbundle"), (type(bf), repr(bf)[:20
 got = inspect_bundle(bf)
 assert [p["question"] for p in got["manifest"]["papers"][0].get("review_pending", [])] == ["2"]
 assert got["ok"] is True and any("need human review" in w for w in got["warnings"]), (got["problems"], got["warnings"])
+assert not any("stale" in w for w in got["warnings"])
 strict_target = tmp / "strict" / "archive.db"
 for dry in (True, False):
     try:

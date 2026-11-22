@@ -5,7 +5,9 @@ app/render.py:split_tex so the API and Streamlit UI render identically.
 """
 from __future__ import annotations
 
+from contextlib import closing
 import re
+import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -44,6 +46,21 @@ def _require_paper(paper_id: int):
     return row
 
 
+def _require_question(paper_id: int, qn: str):
+    # No migrations or writes here: a read concurrent with a bundle publish
+    # must only see committed rows, and must not take the writer lock.
+    uri = Path(database.DB_PATH).resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, qtype, difficulty, topic_suggestion FROM questions WHERE paper_id=? AND question_number=?",
+            (paper_id, qn),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"question {qn} not found")
+    return row
+
+
 def _qn_sort_key(qn: str):
     """Same ordering as the Streamlit reader (app/app.py:_qn_sort_key)."""
     m = re.match(r"^(?:([A-Za-z]+)-)?(\d+)(.*)$", qn or "")
@@ -77,6 +94,7 @@ def _tex_segments(tex: str, qdir: Path, paper_id: int, qn: str) -> list[dict]:
 
 
 def _question_detail(paper_id: int, qn: str) -> dict:
+    mrow = _require_question(paper_id, qn)
     qdir = directory_manager.get_question_dir(paper_id, qn)
     try:
         qtex = (qdir / "question.tex").read_text(encoding="utf-8")
@@ -86,17 +104,6 @@ def _question_detail(paper_id: int, qn: str) -> dict:
         stex = (qdir / "solution.tex").read_text(encoding="utf-8")
     except OSError:
         stex = "*missing*"
-    conn = database.get_connection()
-    try:
-        mrow = conn.execute(
-            "SELECT id, qtype, difficulty, topic_suggestion FROM questions"
-            " WHERE paper_id = ? AND question_number = ?",
-            (paper_id, qn),
-        ).fetchone()
-    finally:
-        conn.close()
-    if mrow is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"question {qn} not found")
     links = []
     for code, _rank, src in database.get_question_links(mrow["id"]):
         try:
@@ -193,19 +200,20 @@ def get_one_question(paper_id: int, qn: str):
 
 @router.get("/{paper_id}/questions/{qn}/figures/{name}")
 def get_figure(paper_id: int, qn: str, name: str):
-
+    _require_question(paper_id, qn)
     safe = Path(name).name
     if safe != name or not safe:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad figure name")
-    fig = directory_manager.get_question_dir(paper_id, qn) / "figures" / safe
+    folder = directory_manager.get_question_dir(paper_id, qn) / "figures"
+    fig = folder / safe
     try:
-        fig.resolve().relative_to(
-            directory_manager.get_question_dir(paper_id, qn).resolve())
+        if fig.resolve().parent != folder.resolve():
+            raise ValueError("not an archive figure")
     except (ValueError, OSError):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad figure name")
     if not fig.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "figure not found")
-    return FileResponse(fig)
+    return FileResponse(fig, headers={"X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/{paper_id}/questions/{qn}/render")
@@ -217,6 +225,7 @@ def render_question(paper_id: int, qn: str, part: str = "question"):
 
     if part not in ("question", "solution"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "part must be question|solution")
+    _require_question(paper_id, qn)
     qdir = directory_manager.get_question_dir(paper_id, qn)
     texp = qdir / f"{part}.tex"
     if not texp.is_file():

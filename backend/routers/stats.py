@@ -287,16 +287,14 @@ def purge_intermediates():
 def _resolve_managed(stored: str | None) -> Path | None:
     """Resolve a DB-stored PDF path to an existing absolute file.
 
-    Stored values may be absolute or bare filenames (older rows); try the
-    value as-is, then data/archive/, then data/cleaned/. Returns None when
-    nothing exists on disk.
+    Only a legacy bare filename can fall back to a managed directory.
+    Never substitute a different file for a missing absolute path.
     """
     if not stored:
         return None
     cands = [Path(stored)]
-    base = Path(stored).name
-    cands.append(directory_manager.ARCHIVE_DIR / base)
-    cands.append(directory_manager.CLEANED_DIR / base)
+    if cands[0].name == stored:
+        cands.extend((directory_manager.ARCHIVE_DIR / stored, directory_manager.CLEANED_DIR / stored))
     for c in cands:
         try:
             if c.is_file() and not c.is_symlink():
@@ -304,6 +302,14 @@ def _resolve_managed(stored: str | None) -> Path | None:
         except OSError:
             continue
     return None
+
+
+def _linked_bundle_pdf(conn, stored, path):
+    if not stored or path.suffix.lower() != ".pdf":
+        return False
+    outputs = directory_manager.OUTPUT_BASE.resolve()
+    return any(path.parent == outputs / str(row[0]) / "_source" for row in conn.execute(
+        "SELECT id FROM papers WHERE question_pdf_path=? OR solution_pdf_path=?", (stored, stored)))
 
 
 def _all_db_pdf_refs() -> set[str]:
@@ -424,8 +430,8 @@ def delete_paper_pdfs(body: dict):
     """Delete selected PDFs; DB references to deleted files are cleared.
 
     Body: {"paths": [stored DB strings], "unlinked": [{location, name}]}.
-    Only files inside the data tree are ever touched; anything outside is
-    reported, never deleted. Returns counts plus cleared references.
+    Only files inside the data tree and DB-linked bundle source PDFs in the
+    corresponding paper's _source folder may be deleted.
     """
     data_roots = set()
     for _root in (directory_manager.ARCHIVE_DIR, directory_manager.CLEANED_DIR,
@@ -470,7 +476,7 @@ def delete_paper_pdfs(body: dict):
                         break
                 except (OSError, ValueError):
                     continue
-            if not inside:
+            if not inside and not _linked_bundle_pdf(conn, stored, rp):
                 refused.append(stored or str(rp))
                 continue
             slot = by_file.setdefault(str(rp), {"rp": rp, "stored": []})

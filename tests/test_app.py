@@ -1094,3 +1094,14 @@ def test_bracket_line_after_math_compiles():
     with tempfile.TemporaryDirectory() as tmp:
         out = render_tex_to_png(normalize_steps(tex), tmp, "_reg.png")
         assert out is not None and pathlib.Path(out).is_file()
+
+
+def test_sparse_table_beyond_padding_limit_keeps_content_without_expanding(tmp_path):
+    from app.render import split_tex
+
+    wide = "&".join([""] * 99 + ["far cell"])
+    tex = r"\begin{tabular}{l}" + r"\\".join([wide] + ["short cell"] * 90) + r"\end{tabular}"
+    output = repr(split_tex(tex, tmp_path))
+    assert "far cell" in output and "short cell" in output
+    assert len(output) < 5000
+    assert "literal" in repr(split_tex("literal @@MTABLE:999@@", tmp_path))

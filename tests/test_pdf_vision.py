@@ -448,8 +448,12 @@ def _prime_assist(pid, name, q="1", n=3):
 
 
 def test_exact_crop_refused_before_assisted_tries(
-        dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Gate: exact box with 0 assisted attempts saves nothing."""
+        dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path, monkeypatch):
+    """The retry gate does not build a crop canvas or save an image."""
+    def unexpected_canvas(_):
+        pytest.fail("exact_crop should reject before preparing the crop canvas")
+
+    monkeypatch.setattr("pdf_longtext.ensure_crop_canvas", unexpected_canvas)
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, _, _ = _pdf_with_images(tmp_path)
     cmd = _exact(pdf, pid, (0, 0, 500, 500), "e.png")

@@ -194,3 +194,27 @@ def test_combined_qp_solution_single_row(tmp_db, tmp_path, monkeypatch):
     finally:
         conn.close()
     assert row[0] is None and row[1] is None
+
+
+def test_selective_delete_accepts_only_the_linked_bundle_source_pdf(tmp_db, tmp_outputs, tmp_path, monkeypatch):
+    import database as db
+    from backend.routers import stats as st
+
+    archive = _seed_archive(tmp_path, monkeypatch)
+    original = (tmp_outputs / "1" / "_source" / "questions.pdf").resolve()
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"%PDF-1.4")
+    unlinked = original.with_name("not-linked.pdf")
+    unlinked.write_bytes(b"%PDF-1.4")
+    unrelated = archive / original.name
+    unrelated.write_bytes(b"%PDF-1.4")
+    conn = db.get_connection()
+    try:
+        conn.execute("INSERT INTO papers(id,paper_name,question_pdf_path) VALUES (1,'Imported',?)", (str(original),))
+        conn.commit()
+    finally:
+        conn.close()
+    assert st.delete_paper_pdfs({"paths": [str(unlinked)]})["deleted"] == 0
+    assert st.delete_paper_pdfs({"paths": [str(original)]})["deleted"] == 1
+    assert st.delete_paper_pdfs({"paths": [str(original)]})["deleted"] == 0
+    assert unrelated.is_file() and unlinked.is_file()

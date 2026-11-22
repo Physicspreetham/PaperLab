@@ -90,7 +90,8 @@ Prefer **export → inspect → dry-run → merge** with the exact same file.
 duplicate detection, backups and receipts, see the
 [bundle guide](../paperlab_bundle/README.md). `custom_importer merge` remains
 a convenience wrapper; only that wrapper also writes the receipt to
-`workspace.json`.
+`workspace.json`. To publish to a deployed host without shell access, use
+the [archivist upload API](../paperlab_bundle/README.md#upload-to-a-deployed-server).
 
 ## Transcription essentials (full rules in SKILL.md)
 

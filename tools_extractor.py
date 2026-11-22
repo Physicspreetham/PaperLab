@@ -37,6 +37,14 @@ from PIL import Image, ImageDraw
 
 import database
 import directory_manager
+from app.latex_syntax import (
+    DISPLAY_ENVS,
+    analyze as _analyze_latex,
+    checked_figure_references,
+    escape_text_underscores as _escape_text_underscores,
+    normalize_figure_references,
+    prose_chunks,
+)
 
 _RENDER_DPI = 200
 
@@ -1024,11 +1032,6 @@ def exact_crop(
     # Integers only: truncate, never round up (rounding up could push an
     # edge onto neighboring text).
     x, y, width, height = (int(v) for v in (x, y, width, height))
-    # Figure-only canvas: detection AND save see the crop canvas (long
-    # text truly deleted, vector/raster intact), never the raw page.
-    # Lazy import: pdf_longtext imports this module at its top level.
-    from pdf_longtext import ensure_crop_canvas
-    pdf_path = ensure_crop_canvas(pdf_path)
     if not (0 <= x <= 1000 and 0 <= y <= 1000):
         raise ValueError(f"top-left {(x, y)} outside 0-1000 grid")
     if width < 1 or height < 1:
@@ -1055,6 +1058,11 @@ def exact_crop(
                 ]
             }
         )
+
+    # Build the figure-only canvas only after the box and retry gate pass.
+    # Lazy import: pdf_longtext imports this module at its top level.
+    from pdf_longtext import ensure_crop_canvas
+    pdf_path = ensure_crop_canvas(pdf_path)
 
     # Exact-only: no snap-matching here by design (it runs solely inside
     # assisted_crop). What you draw is what gets saved, byte for byte.
@@ -1616,83 +1624,7 @@ def verify_latex_syntax(latex_string: str) -> str:
     Returns:
         "Valid", or a "; "-separated list of syntax errors.
     """
-    errors: list[str] = []
-
-    # --- Brace matching (ignore escaped \{ \} and \\ control) ---
-    # Strip escaped braces so they are not counted.
-    scrubbed = latex_string.replace("\\\\", "")
-    depth = 0
-    for i, ch in enumerate(scrubbed):
-        if ch == "\\":
-            continue  # handled below via lookbehind instead
-        if ch not in "{}":
-            continue
-        # Count preceding backslashes to detect escaping.
-        j = i - 1
-        n_bs = 0
-        while j >= 0 and scrubbed[j] == "\\":
-            n_bs += 1
-            j -= 1
-        if n_bs % 2 == 1:
-            continue  # escaped brace
-        if ch == "{":
-            depth += 1
-        else:
-            depth -= 1
-            if depth < 0:
-                errors.append(f"Unmatched closing brace '}}' at position {i}")
-                depth = 0
-    if depth > 0:
-        errors.append(f"Unmatched opening brace '{{': {depth} unclosed")
-
-    # --- Environment matching ---
-    tokens = re.findall(r"\\(begin|end)\{([^{}]+)\}", latex_string)
-    stack: list[str] = []
-    for kind, env in tokens:
-        if kind == "begin":
-            stack.append(env)
-        else:  # end
-            if not stack:
-                errors.append(f"Stray \\end{{{env}}} with no open environment")
-            elif stack[-1] != env:
-                errors.append(
-                    f"Mismatched environment: expected \\end{{{stack[-1]}}} "
-                    f"but found \\end{{{env}}}"
-                )
-                # Attempt recovery: pop until match or empty.
-                if env in stack:
-                    while stack and stack[-1] != env:
-                        errors.append(f"Unclosed \\begin{{{stack.pop()}}}")
-                    stack.pop()
-                # else: leave stack as-is, stray end already reported
-            else:
-                stack.pop()
-    for env in reversed(stack):
-        errors.append(f"Unclosed \\begin{{{env}}}")
-
-    # Escaped dollars, code and comments cannot open math. A missing $
-    # otherwise survives submission, and can turn later equations into prose.
-    pending = None
-    for m in re.finditer(
-        r"\\begin\{verbatim\*?\}[\s\S]*?\\end\{verbatim\*?\}|\\[\s\S]|%[^\n]*|\$\$?",
-        latex_string,
-    ):
-        token = m.group()
-        if token not in ("$", "$$"):
-            continue
-        if pending is None:
-            pending = token
-        elif token == pending:
-            pending = None
-        elif pending == "$":
-            # In inline math, adjacent dollars can close one span and
-            # immediately open the next: $x$$y$.
-            continue
-        else:
-            break
-    if pending is not None:
-        errors.append(f"Unpaired {pending} math delimiter; check the start and end of each formula")
-
+    errors, _ = _analyze_latex(latex_string)
     return "Valid" if not errors else "; ".join(errors)
 
 
@@ -1752,26 +1684,11 @@ def submit_question(paper_id: int, question_number: str, latex_content: str,
     # at save time so the PNG and the HTML agree. Hard-wrapped stems are
     # untouched: only option labels split, never arbitrary prose lines.
     from app.render import _split_inline_options as _split_q_options
-    latex_content = _split_q_options(latex_content)
-    latex_content = _strip_backtick_quoting(latex_content)
-    latex_content = _escape_text_underscores(latex_content)
-    errs: list[str] = []
-    if "`" in latex_content:
-        errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
-                    "$...$ with no backticks or quote marks around it")
-    for f in re.findall(r"figures/([\w\-\.]+)", latex_content):
-        if f.startswith("sfig"):
-            errs.append(f"solution-side figure in question: {f} -- crop it "
-                        "from a question page as qfig* instead")
-        elif not (
-            directory_manager.get_question_dir(paper_id, question_number)
-            / directory_manager.FIGURES_DIR
-            / f
-        ).exists():
-            errs.append(f"missing figure file: {f}")
-    verdict = verify_latex_syntax.invoke({"latex_string": latex_content})
-    if verdict != "Valid":
-        errs.append(verdict)
+    latex_content = "".join(_split_q_options(chunk) if editable else chunk
+                            for editable, chunk in prose_chunks(latex_content))
+    latex_content = _normalize_submission(latex_content)
+    qdir = directory_manager.get_question_dir(paper_id, question_number)
+    errs = _submission_errors(latex_content, qdir, "question")
     if errs:
         return "NOT SAVED:\n" + "\n".join(errs)
 
@@ -1809,26 +1726,6 @@ def submit_question(paper_id: int, question_number: str, latex_content: str,
 # not plain k'; quotes around plain words like 'C' are legitimate prose
 # and must be kept).
 
-_MATH_SPAN_RE = re.compile(
-    r"\$\$.*?\$\$|\\\[.*?\\\]|(?<!\\)\$(?:[^$\\]|\\.)*?\$", re.DOTALL)
-
-
-def _escape_text_underscores(tex: str) -> str:
-    """Escape bare _ outside math: ``is ___`` -> ``is \\_\\_\\_``.
-
-    A text-mode underscore is always a LaTeX error (Missing $ inserted),
-    so this fires unambiguously; math spans pass through untouched and an
-    already-escaped \\_ is left alone.
-    """
-    out, pos = [], 0
-    for m in _MATH_SPAN_RE.finditer(tex):
-        out.append(re.sub(r"(?<!\\)_", r"\\_", tex[pos:m.start()]))
-        out.append(m.group(0))
-        pos = m.end()
-    out.append(re.sub(r"(?<!\\)_", r"\\_", tex[pos:]))
-    return "".join(out)
-
-
 _BACKTICK_MATH_RE = re.compile(r"`\s*(\$[^$]+\$)\s*['`']?")
 
 
@@ -1839,16 +1736,43 @@ def _strip_backtick_quoting(tex: str) -> str:
     unambiguous. A residual backtick (`` `k' `` without delimiters) is
     left for the validator to reject -- the agent must decide it is math.
     """
-    return _BACKTICK_MATH_RE.sub(r"\1", tex)
+    return "".join(_BACKTICK_MATH_RE.sub(r"\1", chunk) if editable else chunk
+                   for editable, chunk in prose_chunks(tex))
+
+
+def _normalize_submission(tex: str) -> str:
+    return _escape_text_underscores(normalize_figure_references(_strip_backtick_quoting(tex)))
+
+
+def _submission_errors(tex: str, qdir: Path, side: str) -> list[str]:
+    errors = []
+    if any("`" in chunk for editable, chunk in prose_chunks(tex) if editable):
+        errors.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
+                      "$...$ with no backticks or quote marks around it")
+    figures = (qdir / directory_manager.FIGURES_DIR).resolve()
+    wrong_side, prefix = ("solution", "qfig") if side == "question" else ("question", "sfig")
+    wrong_prefix = "sfig" if side == "question" else "qfig"
+    names, figure_errors = checked_figure_references(tex)
+    errors.extend(figure_errors)
+    for name in names:
+        if name.startswith(wrong_prefix):
+            errors.append(f"{wrong_side}-side figure in {side}: {name} -- crop it "
+                          f"from a {side} page as {prefix}* instead")
+        else:
+            path = (figures / name).resolve()
+            if path.parent != figures or not path.is_file():
+                errors.append(f"missing figure file: {name}")
+    syntax_errors, _ = _analyze_latex(tex)
+    return errors + syntax_errors
 
 
 # ---------------------------------------------------------------- normalize
 # One logical step per line -> paragraphs. Idempotent; skips math, lists,
 # comments. Solutions only: hard-wrapped question text would split wrongly.
 
-_MATH_ENVS = {"align", "gather", "equation", "eqnarray", "multline"}
+_MATH_ENVS = DISPLAY_ENVS | {"math"}
 _NORM_DELIM_RE = re.compile(
-    r"\\\[|\\\]|\\(?:begin|end)\{(?:align|gather|equation|eqnarray|multline)\*?\}|\$\$"
+    r"\\\\|\\[()[\]]|\\(?:begin|end)\s*\{(?:" + "|".join(sorted(_MATH_ENVS)) + r")\*?\}|\$\$"
 )
 _NORM_ENV_RE = re.compile(r"\\(begin|end)\{([^}]*)\}")
 
@@ -1858,8 +1782,8 @@ def _norm_math_after(line: str, in_math: bool) -> bool:
         t = m.group(0)
         if t == "$$":
             in_math = not in_math
-        else:
-            in_math = t == "\\[" or t.startswith("\\begin")
+        elif t != "\\\\":
+            in_math = t in ("\\[", "\\(") or t.startswith("\\begin")
     return in_math
 
 
@@ -1872,21 +1796,35 @@ def normalize_steps(tex: str) -> str:
     renderer needs a workaround. Idempotent; math blocks, list items,
     comments and structural commands are left alone.
     """
-    lines = [ln.rstrip() for ln in tex.split("\n")]
+    protected = []
+    _analyze_latex(tex, protected=protected)
+    spans = iter(sorted(protected))
+    active, end = next(spans, None), 0
+    position = 0
+    lines = tex.split("\n")
+    structure = "".join(chunk if editable else re.sub(r"[^\n]", " ", chunk)
+                        for editable, chunk in prose_chunks(tex)).split("\n")
     out: list[str] = []
     in_math, depth = False, 0
-    for i, s in enumerate(lines):
+    for i, line in enumerate(lines):
+        s = line.rstrip()
+        position += len(line)
+        while active is not None and active[0] < position:
+            end = max(end, active[1])
+            active = next(spans, None)
+        protected_break = position < end
         was_math = in_math
-        in_math = _norm_math_after(s, in_math)
-        for m in _NORM_ENV_RE.finditer(s):
+        in_math = _norm_math_after(structure[i], in_math)
+        for m in _NORM_ENV_RE.finditer(structure[i]):
             if m.group(2).rstrip("*") in _MATH_ENVS:
                 continue
             depth = max(0, depth + (1 if m.group(1) == "begin" else -1))
-        out.append(s)
+        out.append(line if protected_break else s)
         nxt = lines[i + 1] if i + 1 < len(lines) else ""
         if (
             s.strip()
             and nxt.strip()
+            and not protected_break
             and not was_math
             and not in_math
             and depth == 0
@@ -1895,6 +1833,7 @@ def normalize_steps(tex: str) -> str:
             and not nxt.lstrip().startswith(("\\end", "\\item", "%"))
         ):
             out.append("")
+        position += 1
     return "\n".join(out)
 
 
@@ -1957,32 +1896,13 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
             if body_core.strip().lower() in ("", "no_solution_found"):
                 # Keep the real key, mark the missing body explicitly.
                 content = lines[0].rstrip() + "\n" + directory_manager.SOLUTION_PLACEHOLDER
-                qdir = directory_manager.ensure_question_dir(paper_id, question_number)
-                (qdir / directory_manager.SOLUTION_TEX).write_text(content, encoding="utf-8")
-                return "saved"
-        content = _strip_backtick_quoting(content)
-        content = _escape_text_underscores(content)
-        errs: list[str] = []
-        if "`" in content:
-            errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
-                        "$...$ with no backticks or quote marks around it")
+        content = _normalize_submission(content)
+        qdir = directory_manager.get_question_dir(paper_id, question_number)
         first = content.strip().splitlines()[0]
+        content = normalize_steps(content)
+        errs = _submission_errors(content, qdir, "solution")
         if not re.search(r"[A-D]|\d", first):
             errs.append("first line must contain the final answer key")
-        for f in re.findall(r"figures/([\w\-\.]+)", content):
-            if f.startswith("qfig"):
-                errs.append(f"question-side figure in solution: {f} -- crop it "
-                            "from a solution page as sfig* instead")
-            elif not (
-                directory_manager.get_question_dir(paper_id, question_number)
-                / directory_manager.FIGURES_DIR
-                / f
-            ).exists():
-                errs.append(f"missing figure file: {f}")
-        content = normalize_steps(content)
-        verdict = verify_latex_syntax.invoke({"latex_string": content})
-        if verdict != "Valid":
-            errs.append(verdict)
         if errs:
             return "NOT SAVED:\n" + "\n".join(errs)
 

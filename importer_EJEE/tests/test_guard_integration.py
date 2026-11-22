@@ -16,7 +16,7 @@ def test_native_submission_and_guard_in_isolated_process():
     if compat.is_dir():
         env["PYTHONPATH"] = str(compat)
     code = r'''
-import json, tempfile, sys
+import tempfile, sys
 from pathlib import Path
 sys.path.insert(0, str(Path("importer_EJEE").resolve()))
 from bootstrap import activate, ROOT
@@ -48,12 +48,12 @@ with tempfile.TemporaryDirectory(dir=ROOT / "runs") as tmp:
         {"paper_id":pid, "question_number":"1", "latex_content":q, "qtype":"unknown"}
     ) == "saved"
     folder = directory_manager.get_question_dir(pid, "1")
-    assert r"a\_1" in (folder/"question.tex").read_text(encoding="utf-8")
+    saved = (folder/"question.tex").read_text(encoding="utf-8")
+    assert r"a_1=\frac{m_2}{m_3}" in saved and r"\text{file\_name}" in saved
     guard_saved_submission(pid, "1", "question", q)
     fixed = (folder/"question.tex").read_text(encoding="utf-8")
-    assert r"a_1=\frac{m_2}{m_3}" in fixed
-    assert r"\text{file\_name}" in fixed
-    assert json.loads((folder/"_submission_repairs.json").read_text())[0]["subscripts"]==3
+    assert fixed == saved  # legacy repair is a no-op after the native fix
+    assert not (folder/"_submission_repairs.json").exists()
     s = (r"\textbf{Answer: 1)} $\frac{m_1}{m_2}$" + "\n\n"
          + r"\underline{\textbf{Solution for 1}}" + "\n\n"
          + r"\begin{align}v_1&=v_2\\a_1&=a_2\end{align}")

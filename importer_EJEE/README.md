@@ -11,7 +11,6 @@ plan; they are not guessed or silently inserted into later runs.
 |---|---|
 | [EJEE_SOURCES.md](EJEE_SOURCES.md) | Source inventory, exclusions, all 13 live pilots, per-part costs, full-book estimates and the cache A/B test |
 | [STATUS.md](STATUS.md) | Historical pilot handoff, known source defects and outstanding work |
-| [suggestions.md](suggestions.md) | Upstream EJEE data issues and recommendations |
 | [Mapped extraction prompt](prompts/mapped_extractor.md) | The EJEE adapter to PaperLab's [base extractor prompt](../prompts/extractor_prompt.md) |
 | [Custom importer](../custom_importer/README.md) · [agent skill](../custom_importer/SKILL.md) | For sources outside EJEE |
 | [PaperLab bundle](../paperlab_bundle/README.md) | Shared export format, dry run and archive merge |
@@ -121,6 +120,9 @@ Read the [merge guide](../paperlab_bundle/README.md) before publishing.
 Specify `--target-outputs` when the archive does not use the `Outputs`
 folder beside its database. The EJEE `merge` phase is a convenience wrapper
 around the same merger and requires an explicit target.
+For a deployed host without shell access, use the
+[archivist upload API](../paperlab_bundle/README.md#upload-to-a-deployed-server)
+with the same `.plbundle`.
 
 ## Pilot evidence and cost
 

@@ -1157,7 +1157,7 @@ def pack(cfg, run):
                                             item['number'])
             if after != before:
                 from tools_extractor import verify_latex_syntax
-                verdict = verify_latex_syntax(after)
+                verdict = verify_latex_syntax.invoke({"latex_string": after})
                 if verdict != 'Valid':
                     raise ValueError(f'pack produced invalid LaTeX for {new}/{side}: {verdict}')
                 path.write_text(after, encoding='utf-8')

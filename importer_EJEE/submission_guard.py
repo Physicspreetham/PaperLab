@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from app.latex_syntax import normalize_figure_references
+
 MATH_ENV = re.compile(
     r"\\begin\{(equation\*?|align\*?|gather\*?|eqnarray\*?|multline\*?)\}"
     r".*?\\end\{\1\}", re.DOTALL
@@ -17,18 +19,6 @@ LITERAL_ARG = re.compile(
     r"\\(?:text[a-zA-Z]*|mbox|operatorname\*?|label|ref|eqref|url|path)"
     r"\s*\{"
 )
-
-
-def normalize_figure_references(text):
-    """Canonicalize ONLY bare generated figure names before native validation.
-
-    Native validation subsequently enforces existence and side ownership.
-    Arbitrary paths, unknown files and already-canonical paths are untouched.
-    """
-    return re.sub(
-        r"(\\includegraphics(?:\[[^\]]*\])?\{)([qs]fig\d+\.png)(\})",
-        r"\1figures/\2\3", text,
-    )
 
 
 def protected_positions(text):

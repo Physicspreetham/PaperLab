@@ -17,12 +17,16 @@ PaperLab's database initializer; existing archives are not migrated here.
 from __future__ import annotations
 
 from contextlib import closing
+from dataclasses import dataclass
 import hashlib
 import json
+import logging
+import math
 import os
 import re
 import shutil
 import sqlite3
+import struct
 import sys
 import tempfile
 import time
@@ -31,15 +35,37 @@ import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from .publication import Publication, record_receipt, recover_locked, saved_receipt
+
 FORMAT = "paperlab-bundle"
 VERSION = 1
 TABLES = ("papers", "questions", "question_topics", "token_usage")
 SUFFIX = ".plbundle"
 _WINDOWS_RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])", re.I)
+_log = logging.getLogger(__name__)
 
 
 class BundleError(ValueError):
     """A bundle (or merge target) failed validation; nothing was changed."""
+
+
+class BundleLimitError(BundleError):
+    """A transport resource limit was exceeded."""
+
+
+class BundleConflict(BundleError):
+    """The target already has this paper or its destination is occupied."""
+
+
+@dataclass(frozen=True)
+class UploadLimits:
+    """Limits for accepting a bundle over HTTP, not for local CLI imports."""
+
+    expanded_bytes: int = 256 * 1024 * 1024
+    members: int = 4096
+    manifest_bytes: int = 2 * 1024 * 1024
+    db_bytes: int = 32 * 1024 * 1024
+    tex_bytes: int = 512 * 1024
 
 
 def _sha(path) -> str:
@@ -255,14 +281,101 @@ def _validate_file_names(names):
                 raise BundleError(f"conflicting portable paths in bundle: {name!r}")
 
 
-def open_bundle(path, dest) -> dict:
+_ZIP_END = struct.Struct("<4s4H2IH")
+_FIGURE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+_RASTER_EXTENSIONS = _FIGURE_EXTENSIONS | {".webp"}
+_FIGURE_BYTES = 3 * 1024 * 1024
+_MAX_PIXELS = 8_000_000
+
+
+def _check_upload_zip_end(path, limits):
+    # Bound the central directory before ZipFile allocates a ZipInfo per entry.
+    # Bundles created by PaperLab within these limits use normal single-disk ZIP.
+    with path.open("rb") as stream:
+        size = stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, size - (_ZIP_END.size + 20)))
+        tail = stream.read()
+    end = len(tail) - _ZIP_END.size
+    if end < 0 or tail[end:end + 4] != b"PK\x05\x06":
+        raise BundleError("invalid ZIP bundle")
+    _, disk, cd_disk, local, total, cd_size, _, comment = _ZIP_END.unpack_from(tail, end)
+    if disk or cd_disk or local != total or comment:
+        raise BundleError("expected a single-disk PaperLab ZIP bundle")
+    if total > limits.members or cd_size > limits.members * 512:
+        raise BundleLimitError("bundle has too many ZIP entries or too much ZIP metadata")
+    # ZipFile can otherwise accept a ZIP64 locator that overrides these bounds.
+    if end >= 20 and tail[end - 20:end - 16] == b"PK\x06\x07":
+        raise BundleError("ZIP64 is not supported for HTTP uploads; split the bundle")
+
+
+def _check_upload_members(members, limits):
+    if len(members) > limits.members or sum(m.file_size for m in members) > limits.expanded_bytes:
+        raise BundleLimitError("expanded bundle exceeds the upload limits")
+    for m in members:
+        name = safe_relpath(m.filename)
+        parts = name.split("/")
+        suffix = PurePosixPath(name).suffix.lower()
+        # Accept only deflate options, a data descriptor, or the UTF-8 flag.
+        if m.flag_bits & ~0x80E or m.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            raise BundleError("unsupported ZIP member flags or compression")
+        if name == "bundle.json":
+            ceiling = limits.manifest_bytes
+        elif name == "paperlab.db":
+            ceiling = limits.db_bytes
+        elif len(parts) == 4 and parts[0] == "Outputs" and parts[3] in ("question.tex", "solution.tex"):
+            ceiling = limits.tex_bytes
+        elif len(parts) == 5 and parts[0] == "Outputs" and parts[3] == "figures" and suffix in _FIGURE_EXTENSIONS:
+            ceiling = _FIGURE_BYTES
+        elif len(parts) == 3 and parts[0] == "sources" and suffix in _RASTER_EXTENSIONS | {".pdf"}:
+            ceiling = limits.expanded_bytes
+        else:
+            raise BundleError(f"unsupported file in uploaded bundle: {name!r}")
+        if m.file_size > ceiling:
+            raise BundleLimitError(f"bundle member exceeds the upload limit: {name!r}")
+
+
+def _check_uploaded_media(file, rel):
+    suffix = file.suffix.lower()
+    if suffix not in _RASTER_EXTENSIONS | {".pdf"}:
+        return
+    with file.open("rb") as stream:
+        head = stream.read(12)
+    ok = {
+        ".png": head.startswith(b"\x89PNG\r\n\x1a\n"),
+        ".jpg": head.startswith(b"\xff\xd8\xff"),
+        ".jpeg": head.startswith(b"\xff\xd8\xff"),
+        ".webp": head.startswith(b"RIFF") and head[8:12] == b"WEBP",
+        ".pdf": head.startswith(b"%PDF-"),
+    }
+    if not ok[suffix]:
+        raise BundleError(f"media does not match its file type: {file.name!r}")
+    if suffix != ".pdf":
+        from PIL import Image
+
+        image_format = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}[suffix]
+        try:
+            with Image.open(file, formats=[image_format]) as image:
+                if image.width * image.height > _MAX_PIXELS:
+                    raise BundleLimitError(f"image exceeds the pixel limit: {rel!r}")
+                image.verify()
+            with Image.open(file, formats=[image_format]) as image:
+                image.load()
+        except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+            raise BundleError(f"unreadable image in bundle: {rel!r}") from exc
+
+
+def open_bundle(path, dest, *, upload_limits: UploadLimits | None = None) -> dict:
     """Validate and extract a bundle into ``dest``. Returns its manifest."""
     path, dest = Path(path), Path(dest)
+    if upload_limits:
+        _check_upload_zip_end(path, upload_limits)
     try:
         z = zipfile.ZipFile(path)
     except zipfile.BadZipFile as exc:
-        raise BundleError(f"{path} is not a PaperLab bundle: {exc}")
+        raise BundleError("invalid PaperLab ZIP bundle") from exc
     with z:
+        if upload_limits:
+            _check_upload_members(z.infolist(), upload_limits)
         names = z.namelist()
         if len(names) != len(set(names)):
             raise BundleError("duplicate ZIP entries")
@@ -271,6 +384,10 @@ def open_bundle(path, dest) -> dict:
         manifest = json.loads(z.read("bundle.json").decode("utf-8"))
         if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
             raise BundleError(f"not a {FORMAT} file")
+        try:
+            _serialize(manifest)
+        except (ValueError, RecursionError) as exc:
+            raise BundleError("bundle manifest must contain valid UTF-8 JSON values") from exc
         if manifest.get("version") != VERSION:
             raise BundleError(f"unsupported bundle version {manifest.get('version')!r}; expected {VERSION}")
         expected = manifest.get("files", {})
@@ -289,7 +406,15 @@ def open_bundle(path, dest) -> dict:
                 shutil.copyfileobj(src, out)
             if _sha(target) != digest:
                 raise BundleError(f"checksum mismatch for {rel}: bundle is corrupt or was modified")
+            if upload_limits:
+                _check_uploaded_media(target, rel)
     return manifest
+
+
+def _serialize(value):
+    # Encoding now ensures a non-finite float or lone surrogate cannot turn
+    # a committed upload into a validation failure when writing the receipt.
+    return json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
 def inspect_bundle(path) -> dict:
@@ -303,7 +428,135 @@ def inspect_bundle(path) -> dict:
             "ok": not problems}
 
 
-def _content_problems(root: Path, manifest: dict, reviews: str = "block") -> tuple:
+def _open_payload(root):
+    db = sqlite3.connect((root / "paperlab.db").as_uri() + "?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA trusted_schema=OFF")
+    return db
+
+
+def _validate_uploaded_rows(db):
+    from database import DIFFICULTY_VALUES, QTYPE_VALUES
+
+    specs = {
+        "papers": (
+            {"id", "paper_name", "pdf_hash"},
+            {"id", "archive", "q_start", "q_end", "s_start", "s_end", "sol_section_start"},
+            {"paper_name", "pdf_hash", "exam_type", "paper_date", "source_institute", "question_pdf_path",
+             "solution_pdf_path", "status", "error", "sections"},
+        ),
+        "questions": (
+            {"id", "paper_id", "question_number", "latex_folder", "qtype"},
+            {"id", "paper_id"},
+            {"question_number", "latex_folder", "qtype", "status", "difficulty", "topic_suggestion"},
+        ),
+        "question_topics": (
+            {"question_id", "topic_code", "rank", "src"},
+            {"id", "question_id", "rank"}, {"topic_code", "src"},
+        ),
+        "token_usage": (
+            {"paper_id", "phase", "input", "cache_read", "output", "reasoning"},
+            {"id", "paper_id", "input", "cache_read", "output", "reasoning"}, {"phase", "ts"},
+        ),
+    }
+    counts = dict(zip(TABLES, (512, 4096, 65536, 200_000)))
+    ids = {"papers": set(), "questions": set()}
+    for table, (required, ints, texts) in specs.items():
+        cols = {row["name"]: row["hidden"] for row in db.execute(f"PRAGMA main.table_xinfo({table})")}
+        if not required <= cols.keys() or any(cols.values()):
+            raise BundleError(f"invalid columns in bundle table {table}")
+        if db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] > counts[table]:
+            raise BundleLimitError(f"too many rows in bundle table {table}")
+        # Explicit select lists prevent unrelated source columns being evaluated.
+        selected = sorted((ints | texts | ({"elapsed_sec"} if table == "papers" else set())) & cols.keys())
+        for n, row in enumerate(db.execute(f"SELECT {','.join(selected)} FROM {table}"), 1):
+            def invalid(field):
+                raise BundleError(f"invalid {table}.{field} in payload row {n}")
+
+            for field in selected:
+                value = row[field]
+                if value is None:
+                    if field in required:
+                        invalid(field)
+                    continue
+                if field in ints:
+                    if type(value) is not int or not 0 <= value <= (1 << 53) - 1:
+                        invalid(field)
+                    if field in {"id", "paper_id", "question_id"} and value == 0:
+                        invalid(field)
+                elif field in texts:
+                    limit = 65536 if field == "sections" else 8192 if field in {"topic_suggestion", "error"} else 1024
+                    if not isinstance(value, str) or len(value) > limit or "\x00" in value:
+                        invalid(field)
+                    if field in required and not value.strip():
+                        invalid(field)
+                elif type(value) not in (float, int) or not math.isfinite(value) or value < 0:
+                    invalid(field)
+            if table in ids:
+                if row["id"] in ids[table]:
+                    invalid("id")
+                ids[table].add(row["id"])
+            if table in {"questions", "token_usage"} and row["paper_id"] not in ids["papers"]:
+                invalid("paper_id")
+            if table == "questions":
+                if row["qtype"] not in QTYPE_VALUES:
+                    invalid("qtype")
+                if "difficulty" in cols and row["difficulty"] not in (None, *DIFFICULTY_VALUES):
+                    invalid("difficulty")
+                number = row["question_number"]
+                if len(number) > 120 or any(c in "#%" for c in number):
+                    invalid("question_number")
+            if table == "question_topics":
+                if row["question_id"] not in ids["questions"]:
+                    invalid("question_id")
+                if row["src"] not in ("auto", "human"):
+                    invalid("src")
+            if table == "token_usage" and (row["cache_read"] > row["input"] or
+                                            any(row[field] > 1_000_000_000 for field in ("input", "output", "reasoning"))):
+                invalid("token counters")
+
+
+def _review_findings(manifest, question_files):
+    approvals = manifest.get("approvals", {})
+    if not isinstance(approvals, dict):
+        raise BundleError("invalid approval manifest")
+    approved, findings = set(), []
+    for rid, proof in approvals.items():
+        if not isinstance(proof, dict):
+            raise BundleError("invalid approval record")
+        key = (str(proof.get("paper", "")), str(proof.get("question", "")))
+        files = question_files.get(key)
+        if (rid == ":".join(key) and files and proof.get("hashes") == files and
+                all(isinstance(proof.get(field), str) and proof[field].strip() for field in ("by", "at", "note"))):
+            approved.add(key)
+        else:
+            findings.append(f"stale or mismatched approval {rid!r}; review the complete question again")
+    for paper in manifest["papers"]:
+        pid = str(paper["key"])
+        pending = paper.get("review_pending") or []
+        reviews = paper.get("reviews") or {}
+        if not isinstance(pending, list) or not isinstance(reviews, dict):
+            raise BundleError(f"invalid review records for paper {pid}")
+        reported = set()
+        for hold in pending:
+            if not isinstance(hold, dict):
+                findings.append(f"paper {pid}: unrecognized review hold")
+                continue
+            key = (pid, str(hold.get("question", "")))
+            if str(hold.get("paper", "")) != pid or hold.get("id") != ":".join(key) or key not in approved:
+                findings.append(f"paper {pid} Q{key[1]}: item(s) still need human review: "
+                                f"{str(hold.get('reason', 'unresolved hold'))[:512]}")
+                reported.add(key)
+        for number, review in reviews.items():
+            key = (pid, number)
+            if not isinstance(review, dict):
+                raise BundleError(f"invalid review record for paper {pid}")
+            if (review.get("reason") or review.get("approved")) and key not in approved and key not in reported:
+                findings.append(f"paper {pid} Q{number}: item(s) still need human review")
+    return findings
+
+
+def _content_problems(root: Path, manifest: dict, reviews: str = "block", *, uploaded=False) -> tuple:
     """Problems found in an extracted bundle. ``reviews`` controls the gate:
 
     * ``"block"`` (default): unapproved review items and stale approvals are
@@ -314,10 +567,21 @@ def _content_problems(root: Path, manifest: dict, reviews: str = "block") -> tup
     """
     problems, review_notes = [], []
     gate = review_notes if reviews == "warn" else problems
-    approvals = manifest.get("approvals", {})
-    db = sqlite3.connect((root / "paperlab.db").as_uri() + "?mode=ro", uri=True)
-    db.row_factory = sqlite3.Row
+    question_files = {}
+    files_by_folder = {}
+    for rel, digest in manifest["files"].items():
+        parts = rel.split("/")
+        if len(parts) >= 4 and parts[0] == "Outputs":
+            files_by_folder.setdefault((parts[1], parts[2]), {})["/".join(parts[3:])] = digest
+    db = _open_payload(root)
     try:
+        if uploaded:
+            tables = {r["name"]: r["type"] for r in db.execute("PRAGMA main.table_list")}
+            if any(tables.get(name) != "table" for name in TABLES):
+                raise BundleError("bundle database must contain the PaperLab payload tables")
+            if any(kind in ("virtual", "shadow") for kind in tables.values()):
+                raise BundleError("virtual tables are not allowed in uploaded bundles")
+            _validate_uploaded_rows(db)
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             problems.append("bundle database integrity_check failed")
         keys = {_component(p["key"]) for p in manifest["papers"]}
@@ -330,17 +594,22 @@ def _content_problems(root: Path, manifest: dict, reviews: str = "block") -> tup
             if paper is None:
                 continue
             count = db.execute("SELECT count(*) FROM questions WHERE paper_id=?", (pid,)).fetchone()[0]
-            if not count or count != p["questions"]:
+            if not count or type(p["questions"]) is not int or count != p["questions"]:
                 problems.append(f"paper {pid}: question count does not match the manifest")
+            if any(p.get(key) != paper[column] for key, column in
+                   (("name", "paper_name"), ("source", "source_institute"), ("identity", "pdf_hash"), ("exam_type", "exam_type"))):
+                problems.append(f"paper {pid}: identity metadata does not match the database")
             for col in ("question_pdf_path", "solution_pdf_path"):
                 if rel := paper[col]:
                     parts = safe_relpath(rel).split("/")
                     if len(parts) != 3 or parts[:2] != ["sources", pid] or not (root / rel).is_file():
                         problems.append(f"paper {pid}: missing or invalid {col}")
+                    elif uploaded and (root / rel).suffix.lower() != ".pdf":
+                        problems.append(f"paper {pid}: {col} must refer to a source PDF")
         for q in db.execute("SELECT paper_id, question_number, latex_folder FROM questions"):
             number = _component(q["question_number"])
             rel = f"Outputs/{_component(q['paper_id'])}/{number}"
-            if str(q["paper_id"]) not in rows or q["latex_folder"] != rel:
+            if str(q["paper_id"]) not in rows or q["latex_folder"] != rel or number.casefold() == "_source":
                 problems.append(f"paper {q['paper_id']} Q{number}: invalid question folder")
                 continue
             folder = root / rel
@@ -348,34 +617,28 @@ def _content_problems(root: Path, manifest: dict, reviews: str = "block") -> tup
             if not qtex.is_file() or not qtex.read_text(encoding="utf-8").strip():
                 problems.append(f"paper {q['paper_id']} Q{q['question_number']}: empty or missing question.tex")
                 continue
-            text = qtex.read_text(encoding="utf-8") + (
-                (folder / "solution.tex").read_text(encoding="utf-8") if (folder / "solution.tex").is_file() else "")
-            for ref in re.findall(r"\\includegraphics(?:\[[^\]]*\])?\{figures/([^}]+)\}", text):
-                if not (folder / "figures" / _component(ref)).is_file():
-                    problems.append(f"paper {q['paper_id']} Q{q['question_number']}: missing figure {ref}")
-        for p in manifest["papers"]:
-            pending = [h for h in (p.get("review_pending") or []) if isinstance(h, dict)]
-            holds = [h for h in pending if not approvals.get(h.get("id", ""))]
-            if holds:
-                gate.append(f"paper {p['key']} ({p.get('name')}): {len(holds)} item(s) still need human review: "
-                            + "; ".join(h.get("reason", h.get("id", "?")) for h in holds[:5]))
-            stale = []
-            # Covers holds AND approved-clean items: any approval whose files
-            # changed after review is stale, even if nothing else is pending.
-            for rid, proof in approvals.items():
-                if str(proof.get("paper", p["key"])) != str(p["key"]):
+            key = (str(q["paper_id"]), number)
+            question_files[key] = files_by_folder.get(key, {})
+            for filename in ("question.tex", "solution.tex"):
+                file = folder / filename
+                if not file.is_file():
                     continue
-                qn = _component(proof.get("question", ""))
-                current = {}
-                for name in proof.get("hashes", {}):
-                    file = root / "Outputs" / str(p["key"]) / qn / safe_relpath(name)
-                    if file.is_file():
-                        current[name] = _sha(file)
-                if current != {k: v for k, v in proof.get("hashes", {}).items()}:
-                    stale.append(rid)
-            if stale:
-                gate.append(f"paper {p['key']}: {len(stale)} approval(s) stale (files changed after review): "
-                            + ", ".join(stale[:5]))
+                from app.latex_syntax import analyze, checked_figure_references, normalize_figure_references
+
+                text = file.read_text(encoding="utf-8")
+                refs, errors = checked_figure_references(text)
+                if uploaded:
+                    syntax, text_underscores = analyze(text)
+                    errors.extend(syntax)
+                    if text_underscores:
+                        errors.append("unescaped text underscores; save with the native tools and re-export")
+                    if normalize_figure_references(text) != text:
+                        errors.append("figure commands must use the canonical figures/NAME form")
+                    wrong_prefix = "sfig" if filename == "question.tex" else "qfig"
+                    errors.extend(f"figure on the wrong side: {name}" for name in refs if name.startswith(wrong_prefix))
+                errors.extend(f"missing figure {name}" for name in refs if not (folder / "figures" / name).is_file())
+                problems.extend(f"paper {key[0]} Q{number} {filename}: {e}" for e in errors[:10])
+        gate.extend(_review_findings(manifest, question_files))
     finally:
         db.close()
     return (problems, []) if reviews == "block" else (problems, review_notes)
@@ -383,7 +646,7 @@ def _content_problems(root: Path, manifest: dict, reviews: str = "block") -> tup
 
 # --------------------------------------------------------------------- merge
 def merge_bundle(path, target_db, target_outputs=None, dry_run=False, allow_untagged=False,
-                 reviews="warn") -> dict:
+                 reviews="warn", *, upload_limits: UploadLimits | None = None, idempotent=False) -> dict:
     """Merge one bundle into a PaperLab archive: all-or-nothing.
 
     Verification is advisory: review findings come back in ``warnings`` but
@@ -402,14 +665,19 @@ def merge_bundle(path, target_db, target_outputs=None, dry_run=False, allow_unta
         raise BundleError(f"unknown review policy {reviews!r}")
     if target.exists() and not target.is_file():
         raise BundleError(f"target archive path exists but is not a file: {target}")
-    with tempfile.TemporaryDirectory() as tmp:
+    digest = _sha(path)
+    if idempotent and not dry_run and target.is_file():
+        with closing(sqlite3.connect(target.as_uri() + "?mode=ro", uri=True)) as live:
+            previous = saved_receipt(live, digest)
+        if previous is not None:
+            return {**previous, "already_imported": True}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         root = Path(tmp) / "payload"
-        manifest = open_bundle(path, root)
-        problems, warnings = _content_problems(root, manifest, reviews=reviews)
+        manifest = open_bundle(path, root, upload_limits=upload_limits)
+        problems, warnings = _content_problems(root, manifest, reviews=reviews, uploaded=upload_limits is not None)
         summary = {"target": str(target), "papers": [
             {"name": p["name"], "questions": p["questions"]} for p in manifest["papers"]]}
-        with closing(sqlite3.connect((root / "paperlab.db").as_uri() + "?mode=ro", uri=True)) as src:
-            src.row_factory = sqlite3.Row
+        with closing(_open_payload(root)) as src:
             fresh = not target.exists()
             if dry_run or fresh:
                 shadow = Path(tmp) / "target.db"
@@ -423,7 +691,7 @@ def merge_bundle(path, target_db, target_outputs=None, dry_run=False, allow_unta
                             live.backup(copy)
                 with closing(sqlite3.connect(shadow)) as check:
                     _commit(root, src, manifest, shadow, outbase, summary, check,
-                            problems, warnings, allow_untagged, preview=True)
+                            problems, warnings, allow_untagged, digest, preview=True)
                 if dry_run:
                     return {**summary, "dry_run": True, "mergeable": True, "warnings": warnings}
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -439,7 +707,7 @@ def merge_bundle(path, target_db, target_outputs=None, dry_run=False, allow_unta
             try:
                 with closing(sqlite3.connect(target, timeout=30)) as live:
                     return _commit(root, src, manifest, target, outbase, summary, live,
-                                   problems, warnings, allow_untagged)
+                                   problems, warnings, allow_untagged, digest, idempotent=idempotent)
             except Exception:
                 if fresh:
                     target.unlink(missing_ok=True)
@@ -465,13 +733,21 @@ def _validate_merge(src, problems, t, target, allow_untagged):
     for (code,) in src.execute("SELECT DISTINCT topic_code FROM question_topics"):
         if code not in known_topics:
             problems.append(f"topic code {code!r} does not exist in the target syllabus")
+    conflicts, names, identities = [], set(), set()
     for pdf_hash, name, source in src.execute("SELECT pdf_hash, paper_name, source_institute FROM papers"):
+        identity = (name, source)
+        if identity in names or (pdf_hash is not None and pdf_hash in identities):
+            conflicts.append(f"bundle contains duplicate papers named '{name}' ({source})")
+        names.add(identity)
+        identities.add(pdf_hash)
         dup = t.execute("SELECT id FROM papers WHERE pdf_hash=? OR (paper_name=? AND source_institute IS ?)",
                         (pdf_hash, name, source)).fetchone()
         if dup:
-            problems.append(f"target already has '{name}' ({source}) as paper {dup[0]}")
+            conflicts.append(f"target already has '{name}' ({source}) as paper {dup[0]}")
     if problems:
         raise BundleError("bundle cannot be merged:\n  " + "\n  ".join(problems[:60]))
+    if conflicts:
+        raise BundleConflict("bundle cannot be merged:\n  " + "\n  ".join(conflicts[:60]))
     return True
 
 
@@ -486,7 +762,8 @@ def _prepare_target(target: Path):
         database.init_topics(str(target))
 
 
-def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings, allow_untagged, preview=False):
+def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings,
+            allow_untagged, digest, *, preview=False, idempotent=False):
     """Copy question folders + all rows, atomically: backup -> transaction -> checks.
 
     ``src`` comes in as a READ-ONLY handle and stays open through this call,
@@ -494,22 +771,30 @@ def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings
     file blocking it.
     """
     backup = None
-    copied = []
+    publication = None
+    copies = []
     t.row_factory = sqlite3.Row
-    receipt = {"merged": _now(), "target": str(target), "warnings": warnings,
+    receipt = {"merged": _now(), "target": str(target), "warnings": warnings, "sha256": digest,
                "producer": manifest.get("producer"), "producer_chain": manifest.get("producer_chain", []),
                "papers": []}
     try:
         t.execute("PRAGMA foreign_keys=ON")
+        # In rollback-journal mode, dirty-page spilling can take an exclusive
+        # lock early and block our own read-only pre-merge backup connection.
+        t.execute("PRAGMA cache_spill=OFF")
         t.execute("BEGIN IMMEDIATE")
+        if not preview:
+            recover_locked(t, target, outbase)
+        previous = saved_receipt(t, digest)
+        if previous is not None and idempotent and not preview:
+            t.rollback()
+            return {**previous, "already_imported": True}
         _validate_merge(src, list(problems), t, target, allow_untagged)
+        if previous is not None:
+            raise BundleConflict("this exact bundle was already imported into the archive")
         if not preview:
             stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
             backup = target.with_name(f"{target.stem}.pre-bundle-merge-{stamp}-{uuid.uuid4().hex[:8]}.bak")
-            # Snapshot the pre-merge state while this transaction excludes other writers.
-            with closing(sqlite3.connect(target.as_uri() + "?mode=ro", uri=True)) as live:
-                with closing(sqlite3.connect(backup)) as bak:
-                    live.backup(bak)
         receipt["backup"] = str(backup) if backup else None
         paper_meta = {str(p["key"]): p for p in manifest["papers"]}
         cols = {name: [r["name"] for r in t.execute(f"PRAGMA table_info({name})") if r["name"] != "id"]
@@ -525,14 +810,12 @@ def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings
             new_pid = t.execute("SELECT last_insert_rowid()").fetchone()[0]
             paper_dir = outbase / str(new_pid)
             if paper_dir.exists() or paper_dir.is_symlink():
-                raise BundleError(f"target folder already exists: {paper_dir}")
-            if not preview:
-                paper_dir.mkdir(parents=True)
-                copied.append(paper_dir)
+                raise BundleConflict(f"target folder already exists for paper {new_pid}")
+            media = []
+            copies.append((new_pid, media))
             src_dir = root / "sources" / str(p["id"])
             if src_dir.is_dir():
-                if not preview:
-                    shutil.copytree(src_dir, paper_dir / "_source")
+                media.append((src_dir, "_source"))
                 for col in ("question_pdf_path", "solution_pdf_path"):
                     if p.get(col):
                         t.execute(f"UPDATE papers SET {col}=? WHERE id=?",
@@ -541,8 +824,7 @@ def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings
             for q in src.execute("SELECT * FROM questions WHERE paper_id=? ORDER BY id", (p["id"],)):
                 q = dict(q)
                 folder = paper_dir / q["question_number"]
-                if not preview:
-                    shutil.copytree(root / q["latex_folder"], folder)
+                media.append((root / q["latex_folder"], q["question_number"]))
                 qrow = {c: q.get(c) for c in cols["questions"]}
                 qrow.update(paper_id=new_pid, latex_folder=str(folder))
                 t.execute(f"INSERT INTO questions ({','.join(cols['questions'])}) VALUES ({','.join('?' * len(cols['questions']))})",
@@ -571,16 +853,39 @@ def _commit(root, src, manifest, target, outbase, summary, t, problems, warnings
         if preview:
             t.rollback()
             return receipt
+        payload = _serialize(receipt)
+        # All row, folder and receipt checks precede the backup and media copies.
+        # The read-only sibling sees the committed pre-merge state.
+        with closing(sqlite3.connect(target.as_uri() + "?mode=ro", uri=True)) as live:
+            with closing(sqlite3.connect(backup)) as bak:
+                live.backup(bak)
+        publication = Publication(target, outbase)
+        for pid, media in copies:
+            staging = publication.stage(pid)
+            for source, name in media:
+                shutil.copytree(source, staging / name)
+        record_receipt(t, digest, payload.decode("utf-8"))
+        publication.install(digest, [pid for pid, _ in copies])
         t.commit()
-    except Exception:
-        t.rollback()
-        for folder in copied:
-            shutil.rmtree(folder, ignore_errors=True)
+    except BaseException:
+        try:
+            if publication is not None and t.in_transaction:
+                publication.finish(committed=False)
+        except OSError:
+            _log.exception("Bundle rollback needs media recovery")
+        finally:
+            t.rollback()
         raise
     log = target.with_name(f"{target.stem}.bundle-merges.jsonl")
     try:
-        with open(log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
-    except OSError as exc:
-        receipt["warnings"] = [*warnings, f"Merge committed, but could not write {log}: {exc}"]
+        publication.finish(committed=True)
+    except OSError:
+        _log.exception("Committed bundle media journal cleanup failed")
+        receipt["warnings"] = [*receipt["warnings"], "Import committed; media journal cleanup is pending."]
+    try:
+        with open(log, "ab") as f:
+            f.write(payload + b"\n")
+    except OSError:
+        _log.exception("Committed bundle receipt log could not be written")
+        receipt["warnings"] = [*receipt["warnings"], "Import committed; the optional receipt log could not be written."]
     return {**summary, **receipt}

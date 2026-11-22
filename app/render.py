@@ -66,8 +66,8 @@ def _strip_comments(tex: str) -> str:
 def _split_math(text):
     """Split text into ("text", s) and ("math", inner, display) parts.
 
-    Pairing rules: $$...$$ and \\[...\\] are display blocks (must be closed
-    to count). A single $ opens math if the next char is not whitespace; it
+    Pairing rules: $$...$$ and \\[...\\] are display blocks; \\(...\\) is
+    inline. They must be closed to count. A single $ opens math if the next char is not whitespace; it
     closes on a $ preceded by a non-space, never across a blank line, and
     skipping escaped \\$. A digit opener ($2\\pi r$, $10^{-3}$) is math,
     unless the span is a bare price-like phrase ("$5 and $6" stays literal).
@@ -102,13 +102,14 @@ def _split_math(text):
             flush()
             out.append(("math", text[i + 2 : j].strip(), True))
             i = j + 2
-        elif text.startswith("\\[", i):
-            j = text.find("\\]", i + 2)
+        elif text.startswith(("\\[", "\\("), i):
+            display = text[i + 1] == "["
+            j = text.find("\\]" if display else "\\)", i + 2)
             if j == -1:
                 buf.append(text[i:])
                 break
             flush()
-            out.append(("math", text[i + 2 : j].strip(), True))
+            out.append(("math", text[i + 2 : j].strip(), display))
             i = j + 2
         elif c == "$":
             nxt = text[i + 1] if i + 1 < n else ""
@@ -277,17 +278,21 @@ def _render_enumerate(m: "re.Match") -> str:
 
 
 _MATH_ENV_RE = re.compile(
-    r"(?<!\$)\\begin\{(align\*?|gather\*?|equation\*?|eqnarray\*?|multline\*?)\}(.*?)\\end\{\1\}",
+    r"(?<!\$)\\begin\s*\{((?:align|alignat|flalign|gather|equation|eqnarray|multline)\*?|displaymath|math)\}"
+    r"(.*?)\\end\s*\{\1\}",
     re.DOTALL,
 )
 # KaTeX has no align*/gather*/equation*: map each to something it knows.
 # aligned|gathered are NOT matched above: they only appear inside math.
 _ENV_WRAP = {
     "align": "aligned",
+    "alignat": "alignedat",
+    "flalign": "aligned",
     "eqnarray": "aligned",
     "gather": "gathered",
     "multline": "gathered",
     "equation": None,
+    "displaymath": None,
 }
 
 
@@ -295,6 +300,8 @@ def _render_math_env(m: "re.Match") -> str:
     """align*/gather*/equation* -> a $$ block (normalised by _display_block)."""
     name = m.group(1).rstrip("*")
     body = m.group(2).strip()
+    if name == "math":
+        return "\\(" + body + "\\)"
     wrap = _ENV_WRAP.get(name, "aligned")
     if wrap:
         body = "\\begin{" + wrap + "} " + body + " \\end{" + wrap + "}"
@@ -307,6 +314,7 @@ _TAB_BEGIN_RE = re.compile(r"\\begin\{tabular\}")
 _TAB_END_RE = re.compile(r"\\end\{tabular\}")
 _FIG_CMD_RE = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}")
 _ROW_SPLIT_RE = re.compile(r"\\\\(?:\[[^\]]*\])?")
+_MAX_PADDED_TABLE_CELLS = 4096
 
 
 def _balanced_braces(s: str, i: int) -> tuple[str, int] | None:
@@ -396,6 +404,13 @@ def _render_one_tabular(body: str) -> str:
     if not rows:
         return ""
     width = max(len(r) for r in rows)
+    if width * len(rows) > _MAX_PADDED_TABLE_CELLS:
+        # Preserve printed cells and figures without expanding a sparse table
+        # into an unbounded rectangle of empty cells.
+        return "\n\n".join([
+            " | ".join(tex_to_markdown(c).replace("\n", " ").strip() for c in row)
+            for row in rows
+        ] + figs)
     rows = [r + [""] * (width - len(r)) for r in rows]
 
     def cell(c: str) -> str:
@@ -425,8 +440,8 @@ def _flatten_one_tabular(body: str) -> str:
 
 
 # Placeholder for a hoisted figure inside a parsed table cell.
-_TFIG_RE = re.compile(r"@@TFIG:(\d+)@@")
-_MTABLE_RE = re.compile(r"@@MTABLE:(\d+)@@")
+_TFIG_RE = re.compile(r"@@TFIG:(\d{1,8})@@")
+_MTABLE_RE = re.compile(r"@@MTABLE:(\d{1,8})@@")
 
 
 def _parse_table_cells(body: str) -> tuple[list[list[str]], list[str]]:
@@ -458,12 +473,15 @@ def _cell_items(raw: str, figs: list[str]):
     items: list[tuple[str, str]] = []
     pos = 0
     for m in _TFIG_RE.finditer(raw):
+        index = int(m.group(1))
+        if index >= len(figs):
+            continue
         txt = raw[pos:m.start()].strip()
         if txt:
             txt = tex_to_markdown(txt).replace("\\\\", " ").replace("\n", " ").strip()
             if txt:
                 items.append(("text", txt))
-        items.append(("fig", figs[int(m.group(1))]))
+        items.append(("fig", figs[index]))
         pos = m.end()
     txt = raw[pos:].strip()
     if txt:
@@ -473,12 +491,14 @@ def _cell_items(raw: str, figs: list[str]):
     return items or [("text", "")]
 
 
-def _build_table(body: str) -> dict:
+def _build_table(body: str) -> dict | None:
     """Top-level tabular body -> {"header", "rows"} with fig cells inline."""
     rows_raw, figs = _parse_table_cells(body)
     if not rows_raw:
         return {"header": [], "rows": []}
     width = max(len(r) for r in rows_raw)
+    if width * len(rows_raw) > _MAX_PADDED_TABLE_CELLS:
+        return None
     rows_raw = [r + [""] * (width - len(r)) for r in rows_raw]
     table = {"header": [_cell_items(c, figs) for c in rows_raw[0]], "rows": []}
     for r in rows_raw[1:]:
@@ -513,8 +533,12 @@ def _render_tabulars(chunk: str, tables: list | None = None) -> str:
         if depth > 0:
             repl = _flatten_one_tabular(body)
         elif tables is not None and _FIG_CMD_RE.search(body):
-            tables.append(_build_table(body))
-            repl = "@@MTABLE:%d@@" % (len(tables) - 1)
+            table = _build_table(body)
+            if table is None:
+                repl = _render_one_tabular(body)
+            else:
+                tables.append(table)
+                repl = "@@MTABLE:%d@@" % (len(tables) - 1)
         else:
             repl = _render_one_tabular(body)
         chunk = chunk[:b.start()] + "\n\n" + repl + "\n\n" + chunk[m.end():]
@@ -686,12 +710,17 @@ def split_tex(tex: str, base_dir: str | Path):
     segments: list = []
     pos = 0
     for m in _SPLIT_RE.finditer(tex):
+        index = None
+        if m.group(2) is not None:
+            marker = _MTABLE_RE.fullmatch(m.group(2))
+            if marker is None or int(marker[1]) >= len(tables):
+                continue
+            index = int(marker[1])
         before = tex[pos:m.start()].strip()
         if before:
             segments.append(("text", tex_to_markdown(before)))
-        if m.group(2) is not None:
-            segments.append(("table", _resolve_table(
-                base, tables[int(_MTABLE_RE.match(m.group(2)).group(1))])))
+        if index is not None:
+            segments.append(("table", _resolve_table(base, tables[index])))
         else:
             segments.append(("fig", _resolve_fig(
                 base, INCLUDEGRAPHIC_RE.match(m.group(1)).group("path"))))
@@ -781,7 +810,7 @@ def build_paper_pdf(items: list[tuple[str, str, str, "Path | None"]],
             src = tmp / "paper.tex"
             src.write_text("".join(parts), encoding="utf-8")
             r = subprocess.run(
-                ["tectonic", "-o", tmp, str(src)],
+                ["tectonic", "--untrusted", "-o", tmp, str(src)],
                 capture_output=True, text=True, timeout=300, cwd=tmp,
             )
             pdf = tmp / "paper.pdf"
@@ -809,7 +838,7 @@ def tex_engine_available() -> bool:
                 "\\documentclass{article}\\begin{document}hi\\end{document}\n"
             )
             r = subprocess.run(
-                ["tectonic", "-o", tmp, str(src)],
+                ["tectonic", "--untrusted", "-o", tmp, str(src)],
                 capture_output=True, text=True, timeout=180,
             )
             return r.returncode == 0 and (Path(tmp) / "probe.pdf").exists()
@@ -819,7 +848,7 @@ def tex_engine_available() -> bool:
 
 # Bump when the viewer wrapper changes: the PNG cache digest folds this in,
 # so stale renders (old margins / page numbers / missing packages) recompile.
-_WRAPPER_REV = "v7-figcap"
+_WRAPPER_REV = "v8-untrusted"
 
 # Widest a figure may render in the compiled PNG, as a fraction of the text
 # width. Crops are full-page-width rasters, so authored widths like
@@ -861,8 +890,8 @@ def _trim_vertical_whitespace(img):
 def _fig_bytes_for_hash(work_dir: str | Path, tex_path: str) -> bytes:
     """Raw bytes of a figure referenced by the tex (b"" if unresolvable)."""
     try:
-        p = Path(work_dir) / tex_path
-        return p.read_bytes() if p.is_file() else b""
+        p = _local_figure(Path(work_dir).resolve(), tex_path)
+        return p.read_bytes() if p is not None else b""
     except OSError:
         return b""
 
@@ -873,6 +902,14 @@ def _is_within(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _local_figure(work: Path, tex_path: str) -> Path | None:
+    rel = Path(tex_path)
+    if rel.is_absolute() or ".." in rel.parts:
+        return None
+    fig = (work / rel).resolve()
+    return fig if _is_within(fig, work) and fig.is_file() else None
 
 
 def _pdf_to_image(pdf: Path):
@@ -958,17 +995,16 @@ def render_tex_to_png(tex: str, work_dir: str | Path, out_name: str) -> Path | N
             # so stage the wrapper .tex plus any referenced figures together.
             work_resolved = work.resolve()
             for m in INCLUDEGRAPHIC_RE.finditer(tex):
-                fig = (work / m.group("path")).resolve()
-                if fig.is_file():
-                    rel = (fig.relative_to(work_resolved)
-                           if _is_within(fig, work_resolved) else Path(fig.name))
-                    dest = Path(tmp) / rel
+                ref = m.group("path")
+                fig = _local_figure(work_resolved, ref)
+                if fig is not None:
+                    dest = Path(tmp) / ref
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(fig, dest)
             src = Path(tmp) / "view.tex"
             src.write_text(doc, encoding="utf-8")
             r = subprocess.run(
-                ["tectonic", "-o", tmp, str(src)],
+                ["tectonic", "--untrusted", "-o", tmp, str(src)],
                 capture_output=True, text=True, timeout=180, cwd=tmp,
             )
             pdf = Path(tmp) / "view.pdf"
