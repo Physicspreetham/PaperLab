@@ -67,6 +67,19 @@ def _load_yaml(path: Path) -> dict:
     return data
 
 
+def topic_primary_mode() -> int:
+    """Read the ranking mode at the start of a Node 3 run."""
+    topics = _load_yaml(CONFIG_PATH).get("topics")
+    if topics is None:
+        return 1
+    if not isinstance(topics, dict):
+        raise ValueError("topics must be a mapping in the pipeline config")
+    mode = topics.get("primary_mode", 1)
+    if type(mode) is not int or mode not in (1, 2):
+        raise ValueError("topics.primary_mode must be 1 or 2 in the pipeline config")
+    return mode
+
+
 def _resolve(raw: str) -> str:
     p = Path(raw)
     if not p.is_absolute():

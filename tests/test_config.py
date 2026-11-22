@@ -106,6 +106,20 @@ def test_explicit_missing_config_errors(tmp_path, monkeypatch):
         )
 
 
+def test_topic_primary_mode_reads_current_yaml(tmp_path, monkeypatch):
+    mod, _ = _load_fresh(monkeypatch, tmp_path, "outputs_dir: ./out\n")
+    assert mod.topic_primary_mode() == 1
+    mod.CONFIG_PATH.write_text("topics:\n  primary_mode: 2\n", encoding="utf-8")
+    assert mod.topic_primary_mode() == 2
+
+
+@pytest.mark.parametrize("mode", ["3", "true", '"2"', "null"])
+def test_invalid_topic_primary_mode_is_rejected(tmp_path, monkeypatch, mode):
+    mod, _ = _load_fresh(monkeypatch, tmp_path, f"topics:\n  primary_mode: {mode}\n")
+    with pytest.raises(ValueError, match=r"topics\.primary_mode must be 1 or 2"):
+        mod.topic_primary_mode()
+
+
 def test_llm_defaults_from_yaml(tmp_path, monkeypatch):
     mod, _ = _load_fresh(
         monkeypatch, tmp_path,
