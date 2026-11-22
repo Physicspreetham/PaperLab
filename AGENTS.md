@@ -68,6 +68,20 @@ the source PDFs and other stages' outputs. Back up any output you replace.
 Tests must use isolated databases, outputs, and media directories. Tests that
 purge files must never point at the live archive or its caches.
 
+## Imports stay outside the main app; the server only accepts PaperLab bundles
+
+The main app is a lightweight server. It serves Archive/Search/Cart/Builder
+and accepts only validated `.plbundle` files via `POST /api/bundles/import`.
+Do not add importer UI, source-database browsers, bulk-conversion screens, or
+heavy legacy/source formats to the main app or frontend.
+
+Conversion tools (`importer_EJEE/`, `custom_importer/`, `paperlab_bundle/`)
+stay separate from the shipped app: anyone converts their own source into a
+PaperLab bundle outside the archive, then submits that bundle to the server
+through the API (or through the local `merge` CLI on a machine with archive
+access). Keep EJEE databases, upload trees, source PDFs, run directories, and
+other heavy intermediates out of the server path and out of Git.
+
 ## Ship only features that are ready for deployment
 
 Keep changes scoped to the request. Do not add temporary features,
