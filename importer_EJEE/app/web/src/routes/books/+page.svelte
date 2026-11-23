@@ -24,6 +24,11 @@
 		return (list?.categories ?? []).filter((c) => counts[c]).map((c) => ({ value: c, count: counts[c] }));
 	});
 
+	// index.built may become true after mount (background first build).
+	$effect(() => {
+		if (index?.built && !list && !error) load();
+	});
+
 	let reqId = 0;
 	async function load() {
 		const id = ++reqId;

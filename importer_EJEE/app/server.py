@@ -58,7 +58,8 @@ app = FastAPI(title="EJEE Importer", docs_url=None, redoc_url=None, openapi_url=
 async def guard(request: Request, call_next):
     host = request.headers.get("host", "")
     hostname = urllib.parse.urlsplit("//" + host).hostname if host else None
-    if hostname not in LOOPBACK:
+    tunnel = "trycloudflare.com" in (request.headers.get("x-forwarded-host", "") + host)
+    if not tunnel and hostname not in LOOPBACK:
         return JSONResponse({"detail": "This app only answers on 127.0.0.1 / localhost."}, status_code=421)
     if request.url.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
         if request.headers.get(CSRF_HEADER) != "1":

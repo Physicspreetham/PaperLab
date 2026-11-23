@@ -103,6 +103,7 @@ keeps cheap.
 | Irodov P1 | handwritten notes, dense | 123 | 15 | 0.0755 | 0.0050 | ₹7.01 | ₹8.28 | ₹0.55 |
 | Aakash BC1 P1 | dense printed modules | — | — | 0.0785 | 0.0052 | ₹7.29 | ₹8.60 | ₹0.57 |
 | APhO P1 | olympiad, photos, multi-page (3 figs/Q) | 245 | 15 | 0.2152 | 0.0143 | ₹19.99 | ₹23.59 | ₹1.57 |
+| ALLEN test paper P187 | institute test paper via app, direct publish (allowed +3 more) | auto-approved holds | — | 0.0750 | 0.0050 | ₹6.97 | ₹8.22 | ₹0.55 |
 | ALLEN test paper P187 | institute test paper via app, direct publish | auto-approved holds | — | 0.0750 | 0.0050 | ₹6.97 | ₹8.22 | ₹0.55 |
 | ALLEN revision module P506 | institute study material via app, direct publish | auto-approved holds | — | 0.0514 | 0.0034 | ₹4.77 | ₹5.64 | ₹0.38 |
 | Sri Chaitanya GTA P1 | institute test paper via app, direct publish | auto-approved holds | — | 0.0627 | 0.0042 | ₹5.82 | ₹6.87 | ₹0.46 |
@@ -161,6 +162,7 @@ printed books ₹0.11-₹0.33, handwritten ~₹0.55, photo olympiads ₹1.10-₹
 | BIIT sheets | 6,831 | BIIT measured (0.0011) | 0.0011 | **~$8** | ₹698 | ₹824 |
 | Allen study material | 6,110 | ALLEN revision measured (0.0034) | 0.0034 | **~$21** | ₹1,928 | ₹2,275 |
 | JEE Digital / Jeenious | 3,879 | JEE Digital measured (0.0024) | 0.0024 | **~$9** | ₹865 | ₹1,020 |
+| Institute test papers | 15,325 | ALLEN test-paper rate applied (0.0050) | 0.0050 | **~$77** | ₹7,119 | ₹8,401 |
 | INSP sheets | 2,697 | INSP measured (0.0013) | 0.0013 | **~$4** | ₹326 | ₹384 |
 | Unbranded chapter sheets | 595 | BIIT key-only (0.0011) | 0.0011 | **<$1** | ₹61 | ₹72 |
 | Aakash Book Crunch | 462 | Aakash measured (0.0052) | 0.0052 | **~$2** | ₹223 | ₹263 |
