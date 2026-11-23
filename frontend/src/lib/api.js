@@ -100,6 +100,9 @@ export const api = {
 	cancelEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
 	deleteEjeeJob: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 	getEjeeJobQuestions: (id) => request(`/ejee/jobs/${encodeURIComponent(id)}/questions`),
+	deleteEjeeQuestion: (paperId, qn) => request(`/ejee/library/papers/${paperId}/questions/${encodeURIComponent(qn)}`, { method: 'DELETE' }),
+	mergeEjeeCollections: (ids, title, remove_originals = false) => request('/ejee/library/papers/merge', { method: 'POST', body: JSON.stringify({ ids, title, remove_originals }), timeoutMs: 180000 }),
+	deleteEjeeCollection: (id) => request(`/ejee/library/papers/${id}`, { method: 'DELETE' }),
 	renameEjeeCollection: (id, title) => request(`/ejee/library/papers/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
 	health: () => request('/health'),
 

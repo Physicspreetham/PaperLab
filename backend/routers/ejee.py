@@ -121,6 +121,12 @@ class TitleBody(BaseModel):
     title: str = Field(min_length=1, max_length=180)
 
 
+class MergeBody(BaseModel):
+    ids: list[int] = Field(min_length=2, max_length=50)
+    title: str = Field(min_length=1, max_length=180)
+    remove_originals: bool = False
+
+
 class SourceBody(BaseModel):
     source_db: str = Field(min_length=1, max_length=4096)
     asset_root: str = Field(min_length=1, max_length=4096)
@@ -304,6 +310,26 @@ def rename_paper(paper_id: int, body: TitleBody):
         fail(exc)
 
 
+@library_router.post('/papers/merge', dependencies=[Depends(require_admin)])
+def merge_papers(body: MergeBody):
+    """Merge collections into one new collection titled `title` (originals kept unless asked)."""
+    from importer_EJEE import merge_collections
+    try:
+        return merge_collections.merge_and_replace(body.ids, body.title.strip(), body.remove_originals)
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
+@library_router.delete('/papers/{paper_id}', dependencies=[Depends(require_admin)])
+def delete_paper(paper_id: int):
+    """Delete a whole collection (its folders are kept in the library trash)."""
+    from importer_EJEE import merge_collections
+    try:
+        return merge_collections.delete_collections([paper_id])
+    except (ValueError, OSError) as exc:
+        fail(exc)
+
+
 @library_router.put('/papers/order', dependencies=[Depends(require_admin)])
 def order_papers(body: OrderBody):
     try:
@@ -337,6 +363,16 @@ def library_question(paper_id: int,qn: str):
         if not items:raise FileNotFoundError('Imported EJEE question not found')
         return items[0]
     except (ValueError,OSError) as exc:fail(exc)
+
+
+@library_router.delete('/papers/{paper_id}/questions/{qn}', dependencies=[Depends(require_admin)])
+def delete_library_question(paper_id: int, qn: str):
+    """Remove one question from a collection (its folder is kept in the library trash)."""
+    from importer_EJEE import merge_collections
+    try:
+        return merge_collections.delete_questions(paper_id, [qn])
+    except (ValueError, OSError) as exc:
+        fail(exc)
 
 
 @library_router.get('/papers/{paper_id}/questions/{qn}/figures/{name}')

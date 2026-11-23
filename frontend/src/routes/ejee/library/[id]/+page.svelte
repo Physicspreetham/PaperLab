@@ -32,6 +32,17 @@
 	let openSolutions = $state({}), editing = $state(null), figureRev = $state(0);
 	let visible = $state({});
 	let renderObserver, positionObserver;
+	let deleting = $state(null), deleteError = $state('');
+	async function removeQuestion(n) {
+		if (!window.confirm(`Delete question ${n} from "${paper.title}"? It is removed from this collection (and can be imported again from EJEE Import).`)) return;
+		deleting = n; deleteError = '';
+		try {
+			await api.deleteEjeeQuestion(paper.id, n);
+			questions = questions.filter(q => q.number !== n);
+			if (editing === n) editing = null;
+			if (number === n) number = questions[0]?.number || '';
+		} catch(e) { deleteError = `Could not delete question ${n}: ${e.message}`; } finally { deleting = null; }
+	}
 	let renaming = $state(false), titleDraft = $state(''), titleError = $state(''), titleBusy = $state(false);
 	function startRename() { titleDraft = paper.title; titleError = ''; renaming = true; }
 	async function saveTitle() {
@@ -104,6 +115,7 @@
 		<span class="pl-sub">{addedCount}/{questions.length} in cart "{cartName}"</span>
 	</div>
 	{#if cartMessage}<p role="status">{cartMessage}</p>{/if}
+	{#if deleteError}<p class="pl-error" role="alert">{deleteError}</p>{/if}
 	{#if questions.length}
 		<nav class="navigation" aria-label="Question navigation">
 			<label>Jump to question<select class="pl-input" value={number} onchange={e => { jump(e.currentTarget.value); e.currentTarget.blur(); }}>{#each questions as q}<option value={q.number}>{q.number}</option>{/each}</select></label>
@@ -118,6 +130,7 @@
 						<AddToCart item={{paperId:Number(paper.id),number:current.number,library:'ejee',qtype:current.qtype,difficulty:current.difficulty,exam:'EJEE collection',institute:current.source || paper.book,preview:`${paper.title} · Question ${current.number}`}} variant="tool" showLabel />
 						{#if $role === 'archivist'}
 							<button type="button" class="pl-btn" onclick={() => editing = editing === current.number ? null : current.number}>{editing === current.number ? 'Close diagram editor' : 'Edit diagrams'}</button>
+							<button type="button" class="pl-btn danger" disabled={deleting === current.number} aria-label={`Delete question ${current.number}`} onclick={() => removeQuestion(current.number)}>{deleting === current.number ? 'Deleting…' : 'Delete'}</button>
 						{/if}
 					</div>
 				</header>
@@ -163,6 +176,7 @@
 	.qhead { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 16px; }
 	.qhead h2 { margin:0; }
 	.qactions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+	.danger { color:var(--pl-seal); border-color:var(--pl-seal); }
 	.chips { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 6px; }
 	.chip { font-size:.8rem; line-height:1.3; padding:3px 10px; border:1px solid var(--pl-line); border-radius:999px; }
 	.chip.source { max-width:100%; overflow-wrap:anywhere; }
