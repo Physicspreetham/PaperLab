@@ -903,3 +903,16 @@ def test_reflow_fuzz_adversarial_walls():
                             "And", "Or")
                 assert s.rstrip(",") in starters or _re.fullmatch(
                     r"[⇒∴∵→←↔=+\-*/<>×÷±∓⋅∘]+", s), f"orphan: {s!r}"
+
+
+def test_reflow_paper_keeps_utf8_when_default_encoding_is_not_utf8(tmp_path):
+    """Regression: read_text()/write_text() without encoding turned a trailing
+    circled one (U+2460, bytes e2 91 a0) into invalid UTF-8 on Windows."""
+    from reflow_solutions import reflow_paper
+    folder = tmp_path / "7" / "3"
+    folder.mkdir(parents=True)
+    sample = Path(__file__).with_name("sample_circled_one_solution.tex").read_bytes()
+    (folder / "solution.tex").write_bytes(sample)
+    reflow_paper(7, output_base=tmp_path)
+    saved = (folder / "solution.tex").read_bytes().decode("utf-8")  # must stay valid UTF-8
+    assert saved.count("①") == sample.decode("utf-8").count("①") == 2
