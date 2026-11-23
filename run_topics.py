@@ -16,10 +16,12 @@ saved as main; the prompt and raw model reply do not change.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
@@ -28,6 +30,7 @@ import directory_manager
 from llm import get_llm, invoke_with_retry
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+TEACHING_ORDER_FILE = Path(__file__).with_name("topics_teaching_order.json")
 
 # Politeness gap between consecutive LLM calls (seconds; env override).
 # Sequential bulk runs (20+ questions/paper) stay far from per-minute
@@ -81,6 +84,33 @@ def build_topic_reference() -> tuple[list[str], dict[int, str]]:
     entries = _topic_entries()
     return ([f"Topic {n} — {path}" for n, _, path in entries],
             {n: code for n, code, _ in entries})
+
+
+@lru_cache(maxsize=1)
+def _teaching_weeks() -> dict[str, int]:
+    """Map stable codes to course weeks without renumbering the model reference."""
+    schedule = json.loads(TEACHING_ORDER_FILE.read_text(encoding="utf-8"))
+    result = {}
+    for group in ("weeks", "inferred_weeks"):
+        for week, codes in schedule[group].items():
+            week_number = int(week)
+            if not 1 <= week_number <= 58 or not isinstance(codes, list) or not codes:
+                raise ValueError(f"invalid teaching week {week!r} in {group}")
+            for code in codes:
+                if not isinstance(code, str) or not re.fullmatch(r"PH\d{2}\.\d{2}", code):
+                    raise ValueError(f"invalid teaching topic code {code!r}")
+                if code in result:
+                    raise ValueError(f"duplicate teaching week for {code}")
+                result[code] = week_number
+    return result
+
+
+def _rank_by_teaching_order(numbers: list[int], topic_codes: dict[int, str]) -> list[int]:
+    weeks = _teaching_weeks()
+    if any(topic_codes[n] not in weeks for n in numbers):
+        return numbers  # an unknown week cannot be placed before or after a known one
+    primary = max(numbers, key=lambda n: weeks[topic_codes[n]])  # ties keep model order
+    return [primary, *(n for n in numbers if n != primary)]
 
 
 def parse_topics_output(text: str, n_topics: int) -> dict:
@@ -168,6 +198,8 @@ def classify_question(paper_id: int, question_number: str,
         return {"ok": False, "error": "question.tex missing/empty"}
     if primary_mode is None:
         primary_mode = config.topic_primary_mode()
+    if primary_mode == 2:
+        _teaching_weeks()  # fail before a paid call if the schedule cannot be loaded
     topic_lines, topic_codes = topic_reference or build_topic_reference()
     system = (PROMPTS_DIR / "topic_prompt.md").read_text(encoding="utf-8")
     messages = [
@@ -197,10 +229,7 @@ def classify_question(paper_id: int, question_number: str,
     model_numbers = parsed["numbers"]
     numbers = model_numbers
     if primary_mode == 2 and not parsed["errors"] and len(numbers) > 1:
-        # The numbers are positions in the exact syllabus passed to the
-        # classifier. Promote the latest pick without reordering the rest.
-        primary = max(numbers)
-        numbers = [primary, *(n for n in numbers if n != primary)]
+        numbers = _rank_by_teaching_order(numbers, topic_codes)
     codes = [topic_codes[n] for n in numbers]
     if (codes or replace_auto) and not parsed["errors"]:
         database.set_question_topics(qid, codes, src="auto")
@@ -290,6 +319,12 @@ def main(argv: list[str] | None = None) -> int:
     if not todo:
         return 0
     primary_mode = config.topic_primary_mode()
+    if primary_mode == 2:
+        try:
+            _teaching_weeks()
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            print(f"Invalid teaching order ({TEACHING_ORDER_FILE.name}): {exc}", file=sys.stderr)
+            return 1
     topic_reference = build_topic_reference()
     ok = errs = 0
     t0 = time.time()

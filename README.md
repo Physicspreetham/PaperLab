@@ -246,15 +246,32 @@ topics:
 
 - **`1` — AI order:** keep the main topic chosen by the model.
 - **`2` — Teaching order (configured here):** make the latest of the model's
-  selected topics the main one. Chapter 4 takes precedence over Chapter 1;
-  within a chapter, Week 3 takes precedence over Week 1. Supporting tags keep
-  their original order.
+  selected topics the main one, using the course weeks in the [Sri Chaitanya
+  Super-60 Nucleus 2026–28 schedule mapping](topics_teaching_order.json), not
+  chapter numbers or the taxonomy's chapter-local week labels. For example,
+  SHM follows fluid statics even though its chapter code is lower. Supporting
+  tags keep their original order. If the latest week is tied, the first model
+  pick in that week wins. All 296 built-in subtopics have a week; if a future
+  code has no mapped week, keep the model's order rather than guessing.
+
+The mapping uses teaching blocks, not cumulative tests, holidays or syllabus
+eligibility notes. It records one week per code; for a topic split across
+weeks, it favors the block teaching the code's distinguishing material
+(for example, conservation of angular momentum over the initial definition).
+Subtopics not clearly named in the schedule are listed separately under
+`inferred_weeks` and placed with related material. For example, the
+resonance-column experiment ranks with organ pipes and sound (W-36), and
+legacy Communication Systems ranks with electromagnetic waves (W-55).
+These placements are for ranking, not claims that the topics were taught
+or included in an exam syllabus.
 
 The question reader shows the saved main topic first, and Search's **Main
 topics** filter uses that same saved tag. The setting does not change the
 prompt, request extra model calls, or retroactively reorder saved tags.
 The next tagging run reads the current value; future mode switches don't
 require a server restart.
+Resuming an EJEE conversion after changing the ranking configuration or
+schedule can invalidate cached classifications and incur new model calls.
 
 For a prompt release, keep the raw model results separate from review
 corrections. Back up the database before publishing a bulk retag and

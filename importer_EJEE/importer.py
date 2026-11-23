@@ -952,14 +952,15 @@ def reviewed_crops(cfg, run=None):
 def node3_inputs_hash() -> dict:
     """Fingerprint everything upstream classification depends on.
 
-    Seed rows, the topic prompt, and the upstream commit: any change here
-    can shift topic numbering or the parse contract, so cached auto tags
+    Seed rows, teaching order, the topic prompt, and the upstream commit:
+    changes can affect numbering, primary rank or parsing, so cached auto tags
     must not survive it (re-running stale tags would silently misfile
     questions). Best-effort commit (None outside git); the file hashes are
     the load-bearing part.
     """
     files = {
         'seed': REPO / 'topics_seed.json',
+        'teaching_order': REPO / 'topics_teaching_order.json',
         'prompt': REPO / 'prompts' / 'topic_prompt.md',
     }
     meta = {k: sha(p) if p.is_file() else None for k, p in files.items()}
@@ -1003,9 +1004,9 @@ def classify(cfg, run):
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
     primary_mode = config.topic_primary_mode()
     topic_reference = build_topic_reference()
-    meta = node3_inputs_hash()
+    meta = {**node3_inputs_hash(), 'primary_mode': primary_mode}
     if progress.get('node3_meta') not in (None, meta):
-        # Seed, prompt or upstream moved under a cached classification:
+        # Classification inputs or ranking changed under a cached classification:
         # cached auto tags would misfile questions, so drop them and redo.
         # Explicit and loud (re-running costs API calls, keeping stale tags
         # costs correctness).

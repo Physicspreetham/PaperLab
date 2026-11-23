@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+import pytest
 
 import database
 import directory_manager
@@ -84,7 +85,12 @@ def test_yaml_mode_promotes_latest_selected_topic_without_changing_model_inputs(
     monkeypatch.setattr(run_topics.config, "CONFIG_PATH", cfg)
     topic_reference = run_topics.build_topic_reference()
     _, by_number = topic_reference
-    raw = "TOPICS: 5, 70, 20\nDIFFICULTY: Medium\nSUGGESTION: NONE"
+    by_code = {code: n for n, code in by_number.items()}
+    # Gravitation is W-40, after electrostatics (W-37) and fluid statics
+    # (W-23), although its model reference number is the smallest.
+    electrostatic, fluid, gravity = (by_code[c] for c in ("PH13.02", "PH35.01", "PH12.01"))
+    picks = [electrostatic, fluid, gravity]
+    raw = f"TOPICS: {electrostatic}, {fluid}, {gravity}\nDIFFICULTY: Medium\nSUGGESTION: NONE"
     calls = []
 
     def respond(_llm, messages):
@@ -95,13 +101,13 @@ def test_yaml_mode_promotes_latest_selected_topic_without_changing_model_inputs(
     monkeypatch.setattr(run_topics, "invoke_with_retry", respond)
 
     client = TestClient(app)
-    for mode, ranked in ((1, [5, 70, 20]), (2, [70, 5, 20])):
+    for mode, ranked in ((1, picks), (2, [gravity, electrostatic, fluid])):
         cfg.write_text(f"topics:\n  primary_mode: {mode}\n", encoding="utf-8")
         report = run_topics.classify_question(pid, "1", topic_reference)
         assert not report["errors"]
         assert report["primary_mode"] == mode
         assert report["raw_reply"] == raw
-        assert report["model_numbers"] == [5, 70, 20]
+        assert report["model_numbers"] == picks
         assert report["numbers"] == ranked
         assert report["codes"] == [by_number[n] for n in ranked]
         assert database.get_question_links(qid) == [
@@ -122,11 +128,45 @@ def test_yaml_mode_promotes_latest_selected_topic_without_changing_model_inputs(
             assert search.json()["total"] == count
     assert len(calls) == 2 and calls[0] == calls[1]
 
-    database.set_question_topics(qid, [by_number[20]], src="human")
+    database.set_question_topics(qid, [by_number[fluid]], src="human")
     run_topics.classify_question(pid, "1", topic_reference)
-    assert database.get_question_links(qid) == [(by_number[20], 0, "human")]
+    assert database.get_question_links(qid) == [(by_number[fluid], 0, "human")]
     with database.get_connection() as conn:
         assert conn.execute("SELECT difficulty FROM questions WHERE id=?", (qid,)).fetchone()[0] == "Easy"
+
+
+def test_teaching_weeks_use_existing_codes_and_keep_model_order_for_uncertainty(tmp_db):
+    by_number = run_topics.topic_codes_by_number()
+    weeks = run_topics._teaching_weeks()
+    assert len(weeks) == 296
+    assert weeks.keys() == set(by_number.values())
+    assert all(1 <= week <= 58 for week in weeks.values())
+    assert {code: weeks[code] for code in (
+        "PH40.02", "PH40.05", "PH35.01", "PH23.07", "PH17.06", "PH17.03", "PH20.06", "PH20.01",
+    )} == {
+        "PH40.02": 4, "PH40.05": 31, "PH35.01": 23, "PH23.07": 33,
+        "PH17.06": 42, "PH17.03": 45, "PH20.06": 47, "PH20.01": 50,
+    }
+    by_code = {code: n for n, code in by_number.items()}
+    assert weeks["PH41.06"] == weeks["PH24.06"] == 36
+    assert weeks["PH34.01"] == weeks["PH22.05"] == 55
+    for codes in (("PH01.01", "PH01.06"), ("PH34.01", "PH22.05")):
+        picks = [by_code[code] for code in codes]
+        assert run_topics._rank_by_teaching_order(picks, by_number) == picks
+    picks = [by_code["PH24.01"], by_code["PH41.06"]]
+    assert run_topics._rank_by_teaching_order(picks, by_number) == picks[::-1]
+    assert run_topics._rank_by_teaching_order([1, 2], {1: "future-code", 2: "PH34.01"}) == [1, 2]
+
+
+def test_missing_schedule_stops_before_model_call(tmp_outputs, tmp_path, monkeypatch):
+    qdir = directory_manager.ensure_question_dir(1, "1")
+    (qdir / "question.tex").write_text("Question.", encoding="utf-8")
+    with monkeypatch.context() as m:
+        m.setattr(run_topics, "TEACHING_ORDER_FILE", tmp_path / "missing.json")
+        m.setattr(run_topics, "_teaching_weeks", run_topics._teaching_weeks.__wrapped__)
+        m.setattr(run_topics, "get_llm", lambda: pytest.fail("must not call the model"))
+        with pytest.raises(FileNotFoundError):
+            run_topics.classify_question(1, "1", primary_mode=2)
 
 
 def test_refill_publishes_clean_abstention_but_never_partial_malformed_tags(
