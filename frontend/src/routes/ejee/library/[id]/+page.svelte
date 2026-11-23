@@ -127,10 +127,12 @@
 				<header class="qhead">
 					<h2>Question {current.number}</h2>
 					<div class="qactions">
-						<AddToCart item={{paperId:Number(paper.id),number:current.number,library:'ejee',qtype:current.qtype,difficulty:current.difficulty,exam:'EJEE collection',institute:current.source || paper.book,preview:`${paper.title} · Question ${current.number}`}} variant="tool" showLabel />
+						<AddToCart item={{paperId:Number(paper.id),number:current.number,library:'ejee',qtype:current.qtype,difficulty:current.difficulty,exam:'EJEE collection',institute:current.source || paper.book,preview:`${paper.title} · Question ${current.number}`}} variant="tool" />
 						{#if $role === 'archivist'}
-							<button type="button" class="pl-btn" onclick={() => editing = editing === current.number ? null : current.number}>{editing === current.number ? 'Close diagram editor' : 'Edit diagrams'}</button>
-							<button type="button" class="pl-btn danger" disabled={deleting === current.number} aria-label={`Delete question ${current.number}`} onclick={() => removeQuestion(current.number)}>{deleting === current.number ? 'Deleting…' : 'Delete'}</button>
+							<button type="button" class="pl-btn small" onclick={() => editing = editing === current.number ? null : current.number}>{editing === current.number ? 'Close diagram editor' : 'Edit diagrams'}</button>
+							<button type="button" class="pl-btn danger icon" disabled={deleting === current.number} aria-label={`Delete question ${current.number}`} title={`Delete question ${current.number}`} onclick={() => removeQuestion(current.number)}>
+								<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg>
+							</button>
 						{/if}
 					</div>
 				</header>
@@ -176,7 +178,9 @@
 	.qhead { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 16px; }
 	.qhead h2 { margin:0; }
 	.qactions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+	.small { min-height:32px; padding:4px 10px; font-size:.8rem; }
 	.danger { color:var(--pl-seal); border-color:var(--pl-seal); }
+	.danger.icon { display:inline-flex; align-items:center; justify-content:center; min-height:32px; min-width:32px; width:32px; padding:0; }
 	.chips { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 6px; }
 	.chip { font-size:.8rem; line-height:1.3; padding:3px 10px; border:1px solid var(--pl-line); border-radius:999px; }
 	.chip.source { max-width:100%; overflow-wrap:anywhere; }
