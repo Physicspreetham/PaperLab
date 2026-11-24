@@ -16,6 +16,7 @@ import sys
 import subprocess
 import tempfile
 import zipfile
+from html import escape as html_escape
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -23,6 +24,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.docx_reference import reference_path
+from backend.pptx_reference import reference_path as pptx_reference_path
 
 router = APIRouter()
 
@@ -143,6 +145,63 @@ def export_docx(body: DocxRequest) -> Response:
     return Response(
         content=data,
         media_type=DOCX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ---- PowerPoint (.pptx): one slide per question chunk ----------------------
+
+PPTX_LUA_FILTER = Path(__file__).resolve().parent.parent / "pandoc_pptx.lua"
+PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
+class Slide(BaseModel):
+    title: str = Field("", max_length=300)
+    html: str = Field("", max_length=MAX_HTML_CHARS)
+
+
+class PptxRequest(BaseModel):
+    title: str = Field("paper", max_length=200)
+    subtitle: str = Field("", max_length=300)
+    slides: list[Slide] = Field(..., min_length=1, max_length=2000)
+
+
+def slides_to_pptx(title: str, subtitle: str, slides: list[Slide]) -> bytes:
+    """Convert slide HTML to .pptx bytes (raises HTTPException on failure)."""
+    exe = _pandoc()
+    doc = "".join(f"<h2>{html_escape(s.title or ' ')}</h2>\n{s.html}\n" for s in slides)
+    with tempfile.TemporaryDirectory(prefix="paperlab_pptx_") as tmp:
+        tmpd = Path(tmp)
+        out = tmpd / "slides.pptx"
+        try:
+            ref = pptx_reference_path(exe, tmpd)
+            proc = subprocess.run(
+                [exe, "-f", "html", "-t", "pptx", "--slide-level=2",
+                 "--reference-doc", str(ref),
+                 "--lua-filter", str(PPTX_LUA_FILTER),
+                 "-M", f"title={title}", "-M", f"subtitle={subtitle}",
+                 "-o", str(out)],
+                input=doc.encode("utf-8"),
+                capture_output=True,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, "pandoc timed out")
+        except subprocess.CalledProcessError:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "could not build the slide theme")
+        if proc.returncode != 0 or not out.is_file():
+            msg = proc.stderr.decode("utf-8", "replace").strip()[:500]
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"pandoc failed: {msg}")
+        return out.read_bytes()
+
+
+@router.post("/pptx")
+def export_pptx(body: PptxRequest) -> Response:
+    data = slides_to_pptx(body.title, body.subtitle, body.slides)
+    fname = _safe_name(body.title) + ".pptx"
+    return Response(
+        content=data,
+        media_type=PPTX_MIME,
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 

@@ -9,6 +9,7 @@ import { cartStore } from '$lib/carts.js';
 	import QuestionSheetPreview from '$lib/components/QuestionSheetPreview.svelte';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
 	import { downloadDocx } from '$lib/exportDocx.js';
+	import { downloadPptx } from '$lib/exportPptx.js';
 	import { downloadPdf } from '$lib/exportPdf.js';
 	import { loadOrderKeys, orderBySubtopic } from '$lib/subtopicOrder.js';
 
@@ -23,6 +24,7 @@ import { cartStore } from '$lib/carts.js';
 	let previewEl = $state(null);
 	let docxBusy = $state(false);
 	let pdfBusy = $state(false);
+	let pptxBusy = $state(false);
 	let docxMsg = $state(null); // {ok, text} | null
 
 	async function exportPdf() {
@@ -41,6 +43,26 @@ import { cartStore } from '$lib/carts.js';
 			docxMsg = { ok: false, text: `PDF export failed: ${e.message}` };
 		} finally {
 			pdfBusy = false;
+			setTimeout(() => (docxMsg = null), 8000);
+		}
+	}
+
+	async function exportPptx() {
+		if (pptxBusy || !previewEl) return;
+		pptxBusy = true;
+		docxMsg = null;
+		try {
+			const { missing, count } = await downloadPptx(previewEl, draft.title?.trim() || 'paper');
+			docxMsg = {
+				ok: missing === 0,
+				text: missing
+					? `PowerPoint saved (${count} slides), but ${missing} figure${missing === 1 ? '' : 's'} could not be loaded.`
+					: `PowerPoint saved (${count} slides).`
+			};
+		} catch (e) {
+			docxMsg = { ok: false, text: `PowerPoint export failed: ${e.message}` };
+		} finally {
+			pptxBusy = false;
 			setTimeout(() => (docxMsg = null), 8000);
 		}
 	}
@@ -334,6 +356,7 @@ import { cartStore } from '$lib/carts.js';
 			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
 			<button type="button" class="pl-btn" disabled={docxBusy || empty} onclick={exportWord} title="Download the current sheet as a Word file (equations stay editable)">{docxBusy ? 'Exporting…' : 'Word (.docx)'}</button>
+			<button type="button" class="pl-btn" disabled={pptxBusy || empty || previewMode !== 'questions'} onclick={exportPptx} title={previewMode === 'questions' ? 'Download the questions as a slide deck, one slide per question (long questions continue over more slides)' : 'PowerPoint export is available in the Questions preview'}>{pptxBusy ? 'Exporting…' : 'PowerPoint (.pptx)'}</button>
 			<button type="button" class="pl-btn pl-btn-primary" disabled={pdfBusy || empty} onclick={exportPdf} title="Download the current sheet as a PDF (A4, exactly as previewed)">{pdfBusy ? 'Saving…' : 'Save PDF'}</button>
 			<button type="button" class="pl-btn" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>

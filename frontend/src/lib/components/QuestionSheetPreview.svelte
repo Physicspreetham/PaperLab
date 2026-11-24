@@ -198,7 +198,8 @@
 		const para = parseParagraphRange(entry.number, entry.qtype);
 		const dressed = dressQuestion(raw, { numbers: nums, para });
 		const out = [];
-		if (pl) out.push({ id: `${entry.blockId}:para`, kind: 'parahead', label: pl, keepWithNext: true });
+		const qlabel = nums.length > 1 ? `${nums[0]}–${nums[nums.length - 1]}` : String(nums[0] ?? '');
+		if (pl) out.push({ id: `${entry.blockId}:para`, kind: 'parahead', label: pl, keepWithNext: true, block: entry.blockId, qlabel });
 		let first = true;
 		let n = 0;
 		const pushSeg = (seg) => {
@@ -210,13 +211,15 @@
 						id: `${entry.blockId}:t${n++}`,
 						kind: 'seg',
 						seg: { kind: 'text', html: piece },
-						keepWithNext: false
+						keepWithNext: false,
+						block: entry.blockId,
+						qlabel
 					});
 					first = false;
 				}
 				return;
 			}
-			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: false });
+			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: false, block: entry.blockId, qlabel });
 			first = false;
 		};
 		for (const seg of dressed) pushSeg(seg);
@@ -225,7 +228,9 @@
 				id: `${entry.blockId}:empty`,
 				kind: 'seg',
 				seg: { kind: 'text', html: '<p>Nothing rendered for this question.</p>' },
-				keepWithNext: false
+				keepWithNext: false,
+				block: entry.blockId,
+				qlabel
 			});
 		}
 		void nums;
@@ -309,7 +314,7 @@
 	{:else if def.kind === 'topichead'}
 		<p class="topichead">{def.title}</p>
 	{:else if def.kind === 'parahead'}
-		<p class="parahead">Paragraph {def.label}</p>
+		<p class="parahead" data-block={def.block} data-qlabel={def.qlabel}>Paragraph {def.label}</p>
 	{:else if def.kind === 'loading'}
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
@@ -320,7 +325,7 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<div class="question-flow"><Segments segments={[def.seg]} zoomable eager bare={bare} scaleBadge /></div>
+		<div class="question-flow" data-block={def.block} data-qlabel={def.qlabel}><Segments segments={[def.seg]} zoomable eager bare={bare} scaleBadge /></div>
 	{/if}
 {/snippet}
 
