@@ -31,3 +31,19 @@ def test_theme_colours_and_fonts_applied():
     z = _deck([Slide(title="Question 1", html="<p>x</p>")])
     theme = z.read("ppt/theme/theme1.xml").decode("utf-8")
     assert "0B4F3A" in theme and "B8863B" in theme and "Georgia" in theme
+
+
+def test_figure_is_a_picture_beside_the_text_not_in_the_text():
+    import base64
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), "white").save(buf, "PNG")
+    uri = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    z = _deck([Slide(title="Question 1", html="<p>stem</p><p>A) one</p>", images=[uri])])
+    slide = z.read("ppt/slides/slide2.xml").decode("utf-8")
+    assert "<p:pic>" in slide  # placed explicitly, not by pandoc's figure layout
+    assert "Question figure" not in slide  # no alt-text caption
+    assert 'cx="4100000"' in slide  # text narrowed to the left column
+    assert any(n.startswith("ppt/media/plfig") for n in z.namelist())
+    assert 'Extension="png"' in z.read("[Content_Types].xml").decode("utf-8")

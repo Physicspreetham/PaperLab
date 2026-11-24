@@ -104,11 +104,21 @@ async function toUnits(el, counter) {
 	}
 	const units = [];
 	for (const node of clone.children) {
+		// Figures leave the text: the server places them beside it as real pictures.
+		const images = [...node.querySelectorAll('img')].map((img) => img.getAttribute('src')).filter(Boolean);
+		for (const img of node.querySelectorAll('img')) img.remove();
+		for (const f of node.querySelectorAll('figure, figcaption')) if (!f.textContent.trim()) f.remove();
+		const empty = node.matches('figure, p, div') && !node.textContent.trim() && !node.querySelector('.math');
 		const text = node.textContent || '';
-		const maths = [...node.querySelectorAll('.math')].reduce((a, m) => a + m.textContent.length * 0.6, 0);
-		const imgs = node.querySelectorAll('img').length;
-		const weight = text.length + maths + imgs * IMAGE_WEIGHT + (node.matches('table') ? 120 : 20);
-		units.push({ html: node.outerHTML, weight, opt: node.matches('p') && isOptionText(text) });
+		// textContent already includes each equation's TeX; typeset math is about half as long.
+		const mathChars = [...node.querySelectorAll('.math')].reduce((a, m) => a + m.textContent.length, 0);
+		const weight = (empty ? 0 : text.length - mathChars * 0.5 + (node.matches('table') ? 100 : 8)) + images.length * IMAGE_WEIGHT;
+		units.push({
+			html: empty ? '' : node.outerHTML,
+			weight,
+			images,
+			opt: node.matches('p') && isOptionText(text)
+		});
 	}
 	return units;
 }
@@ -148,17 +158,17 @@ export async function buildSlides(root, title) {
 	const slides = [];
 	for (const item of order) {
 		if (item.kind === 'section') {
-			slides.push({ title: item.title, html: '' });
+			slides.push({ title: item.title, html: '', images: [] });
 			continue;
 		}
 		const units = [];
 		for (const el of item.els) units.push(...(await toUnits(el, counter)));
-		packSlides(units).forEach((html, i) => {
+		packSlides(units).forEach(({ html, images }, i) => {
 			const lead = i === 0 && item.kicker ? `<p><em>${esc(item.kicker)}</em></p>\n` : '';
-			slides.push({ title: slideTitle(item.label, i), html: lead + html });
+			slides.push({ title: slideTitle(item.label, i), html: lead + html, images });
 		});
 	}
-	if (!slides.some((s) => s.html)) throw new Error('No questions to export yet.');
+	if (!slides.some((s) => s.html || s.images.length)) throw new Error('No questions to export yet.');
 	return { title, subtitle, slides, missing: counter.missing };
 }
 

@@ -24,6 +24,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.docx_reference import reference_path
+from backend.pptx_figures import add_figures
 from backend.pptx_reference import reference_path as pptx_reference_path
 
 router = APIRouter()
@@ -158,6 +159,7 @@ PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presen
 class Slide(BaseModel):
     title: str = Field("", max_length=300)
     html: str = Field("", max_length=MAX_HTML_CHARS)
+    images: list[str] = Field(default_factory=list, max_length=12)  # data: URIs, placed beside the text
 
 
 class PptxRequest(BaseModel):
@@ -192,7 +194,7 @@ def slides_to_pptx(title: str, subtitle: str, slides: list[Slide]) -> bytes:
         if proc.returncode != 0 or not out.is_file():
             msg = proc.stderr.decode("utf-8", "replace").strip()[:500]
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"pandoc failed: {msg}")
-        return out.read_bytes()
+        return add_figures(out.read_bytes(), [s.images for s in slides])
 
 
 @router.post("/pptx")
