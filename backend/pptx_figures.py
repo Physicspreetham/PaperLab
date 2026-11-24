@@ -98,7 +98,7 @@ def add_figures(pptx: bytes, figures: list[list[str]], first_slide: int = 2) -> 
                 scale = 85000 if body_chars <= 650 else 70000
                 xml = re.sub(
                     r'(<p:ph idx="1"\s*/>.*?<p:txBody>)<a:bodyPr\s*/>',
-                    rf'<a:bodyPr><a:normAutofit fontScale="{scale}" lnSpcReduction="10000"/></a:bodyPr>',
+                    rf'\g<1><a:bodyPr><a:normAutofit fontScale="{scale}" lnSpcReduction="10000"/></a:bodyPr>',
                     xml, count=1, flags=re.S,
                 )
         else:

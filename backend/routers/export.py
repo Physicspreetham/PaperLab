@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from backend.docx_reference import reference_path
 from backend.pptx_figures import add_figures
+from backend.pptx_math_fallback import add_math_fallbacks
 from backend.pptx_reference import reference_path as pptx_reference_path
 
 router = APIRouter()
@@ -194,7 +195,7 @@ def slides_to_pptx(title: str, subtitle: str, slides: list[Slide]) -> bytes:
         if proc.returncode != 0 or not out.is_file():
             msg = proc.stderr.decode("utf-8", "replace").strip()[:500]
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"pandoc failed: {msg}")
-        return add_figures(out.read_bytes(), [s.images for s in slides])
+        return add_math_fallbacks(add_figures(out.read_bytes(), [s.images for s in slides]))
 
 
 @router.post("/pptx")
