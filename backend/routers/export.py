@@ -169,6 +169,21 @@ class PptxRequest(BaseModel):
     slides: list[Slide] = Field(..., min_length=1, max_length=2000)
 
 
+def _require_valid_parts(pptx: bytes) -> None:
+    """Never ship a deck PowerPoint/WPS would open blank or ask to repair."""
+    from xml.etree import ElementTree as ET
+
+    with zipfile.ZipFile(io.BytesIO(pptx)) as z:
+        for name in z.namelist():
+            if name.endswith((".xml", ".rels")):
+                try:
+                    ET.fromstring(z.read(name))
+                except ET.ParseError as e:
+                    raise HTTPException(
+                        status.HTTP_500_INTERNAL_SERVER_ERROR, f"slide export produced invalid XML in {name}: {e}"
+                    )
+
+
 def slides_to_pptx(title: str, subtitle: str, slides: list[Slide]) -> bytes:
     """Convert slide HTML to .pptx bytes (raises HTTPException on failure)."""
     exe = _pandoc()
@@ -195,7 +210,9 @@ def slides_to_pptx(title: str, subtitle: str, slides: list[Slide]) -> bytes:
         if proc.returncode != 0 or not out.is_file():
             msg = proc.stderr.decode("utf-8", "replace").strip()[:500]
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"pandoc failed: {msg}")
-        return add_math_fallbacks(add_figures(out.read_bytes(), [s.images for s in slides]))
+        data = add_math_fallbacks(add_figures(out.read_bytes(), [s.images for s in slides]))
+        _require_valid_parts(data)
+        return data
 
 
 @router.post("/pptx")

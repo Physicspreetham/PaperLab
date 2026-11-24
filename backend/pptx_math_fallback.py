@@ -108,6 +108,22 @@ def _plain_run(m: re.Match) -> str:
     return f'<a:r><a:rPr lang="en-US" i="1"/><a:t>{escape(text)}</a:t></a:r>'
 
 
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_A14 = "http://schemas.microsoft.com/office/drawing/2010/main"
+
+
+def _wrap_run(m: re.Match) -> str:
+    """Equation outside any AlternateContent (pandoc does this inside tables).
+
+    A bare `a14:m` has no namespace declaration, which makes the slide invalid
+    XML (PowerPoint offers to "repair" it). Wrap it as PowerPoint itself does.
+    """
+    return (
+        f'<mc:AlternateContent xmlns:mc="{_MC}"><mc:Choice xmlns:a14="{_A14}" Requires="a14">'
+        f"{m.group(0)}</mc:Choice><mc:Fallback>{_plain_run(m)}</mc:Fallback></mc:AlternateContent>"
+    )
+
+
 def add_fallback(slide_xml: str) -> str:
     def repl(m: re.Match) -> str:
         body = m.group(2)
@@ -116,7 +132,13 @@ def add_fallback(slide_xml: str) -> str:
         fb = _MATH.sub(_plain_run, body)
         return f"{m.group(1)}{body}{m.group(3)}<mc:Fallback>{fb}</mc:Fallback>{m.group(4)}"
 
-    return _ALT.sub(repl, slide_xml)
+    out, pos = [], 0
+    for m in _ALT.finditer(slide_xml):  # shape-level blocks: add a Fallback shape
+        out.append(_MATH.sub(_wrap_run, slide_xml[pos:m.start()]))  # anything else: wrap each run
+        out.append(repl(m))
+        pos = m.end()
+    out.append(_MATH.sub(_wrap_run, slide_xml[pos:]))
+    return "".join(out)
 
 
 def add_math_fallbacks(pptx: bytes) -> bytes:

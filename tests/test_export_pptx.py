@@ -94,3 +94,17 @@ def test_omml_to_text():
     ns = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
     x = f'<m:oMath {ns}><m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:oMath>'
     assert omml_to_text(x) == "x²"
+
+
+def test_equations_inside_a_table_keep_the_slide_valid():
+    from xml.etree import ElementTree as ET
+
+    html = (
+        '<p><strong>91.</strong> Match.</p><table><thead><tr><th>Column I</th><th>Column II</th></tr></thead>'
+        r'<tbody><tr><td>(p) radius <span class="math inline">r_0</span></td>'
+        r'<td>(1) <span class="math inline">\frac{1}{2}</span></td></tr></tbody></table>'
+    )
+    z = _deck([Slide(title="Question 91", html=html)])
+    slide = z.read("ppt/slides/slide2.xml").decode("utf-8")
+    ET.fromstring(slide)  # was: unbound prefix a14 (PowerPoint wants to repair the file)
+    assert "radius" in slide and "<mc:Fallback>" in slide and "r₀" in slide
