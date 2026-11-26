@@ -38,6 +38,17 @@ BUILD = APP / "web" / "build"
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 CSRF_HEADER = "x-ejee-app"
 
+
+def public_hosts() -> set[str]:
+    """Extra host names allowed besides loopback (e.g. a demo tunnel).
+
+    Off by default. Set with ``--public-host NAME`` or ``EJEE_APP_PUBLIC_HOSTS``
+    (comma-separated, exact names). Anyone who reaches such a host can use
+    the saved key and archivist password, so only enable it deliberately.
+    """
+    raw = os.environ.get("EJEE_APP_PUBLIC_HOSTS", "")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
 worker = pipeline.Pipeline()
 
 
@@ -58,8 +69,7 @@ app = FastAPI(title="EJEE Importer", docs_url=None, redoc_url=None, openapi_url=
 async def guard(request: Request, call_next):
     host = request.headers.get("host", "")
     hostname = urllib.parse.urlsplit("//" + host).hostname if host else None
-    tunnel = "trycloudflare.com" in (request.headers.get("x-forwarded-host", "") + host)
-    if not tunnel and hostname not in LOOPBACK:
+    if hostname not in LOOPBACK and hostname not in public_hosts():
         return JSONResponse({"detail": "This app only answers on 127.0.0.1 / localhost."}, status_code=421)
     if request.url.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
         if request.headers.get(CSRF_HEADER) != "1":
@@ -480,7 +490,15 @@ def main():
     ap.add_argument("--port", type=int, default=int(os.environ.get("EJEE_APP_PORT", 8030)))
     ap.add_argument("--host", default="127.0.0.1", help="loopback only: 127.0.0.1, localhost or ::1")
     ap.add_argument("--open", action="store_true", help="open the browser")
+    ap.add_argument("--public-host", action="append", default=[], metavar="NAME",
+                    help="also answer for this exact host name (e.g. a tunnel); exposes the saved key and "
+                         "password to anyone who reaches it")
     args = ap.parse_args()
+    if args.public_host:
+        os.environ["EJEE_APP_PUBLIC_HOSTS"] = ",".join(
+            filter(None, [os.environ.get("EJEE_APP_PUBLIC_HOSTS", ""), *args.public_host]))
+        print(f"warning: also answering for {', '.join(args.public_host)}; anyone reaching it can spend "
+              "your key and publish with your password.", flush=True)
     if args.host not in LOOPBACK:
         raise SystemExit("The EJEE Importer holds an API key and the archivist password; it only listens on "
                          "loopback (127.0.0.1, localhost or ::1).")

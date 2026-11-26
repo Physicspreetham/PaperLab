@@ -131,8 +131,15 @@ def client(env):
 def test_api_refuses_foreign_hosts_missing_header_and_cross_origin(client):
     assert client.get("/api/health").json()["ok"]
     assert client.get("/api/health", headers={"host": "evil.example"}).status_code == 421
+    assert client.get("/api/health", headers={"host": "x.trycloudflare.com"}).status_code == 421  # no implicit tunnels
     assert client.post("/api/search", json={}).status_code == 403
     assert client.post("/api/search", json={}, headers={**H, "origin": "http://evil.example"}).status_code == 403
+
+
+def test_public_host_is_explicit_opt_in(client, monkeypatch):
+    monkeypatch.setenv("EJEE_APP_PUBLIC_HOSTS", "demo.example.org")
+    assert client.get("/api/health", headers={"host": "demo.example.org"}).status_code == 200
+    assert client.get("/api/health", headers={"host": "other.example.org"}).status_code == 421
 
 
 def test_settings_hide_secrets_and_gate_processing(client, env):

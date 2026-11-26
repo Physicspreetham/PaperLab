@@ -57,7 +57,10 @@ npm.cmd --prefix importer_EJEE/app/web run build
 Open **http://127.0.0.1:8030/** (`--port` changes it, `--open` opens the
 browser). Rebuild the UI after updating the code. The app listens on
 loopback only and refuses any other host: it holds a paid API key and the
-archivist password.
+archivist password. For a deliberate demo behind a tunnel or proxy, add
+`--public-host exact.host.name` (repeatable, or `EJEE_APP_PUBLIC_HOSTS`);
+anyone who reaches that name can spend the key and publish, so stop the
+app or the tunnel when the demo ends.
 
 For UI development, run the server as above and
 `npm --prefix importer_EJEE/app/web run dev`, then open
